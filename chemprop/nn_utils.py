@@ -107,10 +107,18 @@ def initialize_weights(model: nn.Module) -> None:
     :param model: An PyTorch model.
     """
     for param in model.parameters():
-        if param.dim() == 1:
-            nn.init.constant_(param, 0)
+        dim = param.dim()
+        shape = param.shape
+        if dim == 1:
+            nn.init.zeros_(param)
+        elif dim == 3 and shape[0] == 1:
+            # nn.init.constant_(param, 0)
+            nn.init.xavier_normal_(param)
+            # nn.init.xavier_normal_(param, gain=10)
+            # nn.init.normal_(param)
         else:
             nn.init.xavier_normal_(param)
+
 
 
 class NoamLR(_LRScheduler):

@@ -24,6 +24,7 @@ from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count, param_count_all
 from chemprop.utils import build_optimizer, build_lr_scheduler, load_checkpoint, makedirs, \
     save_checkpoint, save_smiles_splits, load_frzn_model, multitask_mean
+from .response_weights import response_weights
 
 
 def run_training(args: TrainArgs,
@@ -227,6 +228,12 @@ def run_training(args: TrainArgs,
         shuffle=True,
         seed=args.seed
     )
+    non_shuffled_train_loader = MoleculeDataLoader(
+        dataset=train_data,
+        batch_size=args.batch_size,
+        num_workers=num_workers,
+        seed=args.seed
+    )
     val_data_loader = MoleculeDataLoader(
         dataset=val_data,
         batch_size=args.batch_size,
@@ -302,8 +309,17 @@ def run_training(args: TrainArgs,
                 n_iter=n_iter,
                 atom_bond_scaler=atom_bond_scaler,
                 logger=logger,
-                writer=writer
+                writer=writer,
+                dataset=train_data,
             )
+            if args.soft_tree_response_mode == "clustered":
+                response_weight = torch.tensor(response_weights(
+                    model=model,
+                    data_loader=non_shuffled_train_loader,
+                ), device=args.device) # [batch, 1, trees, 2**num_layers]
+                train_targets = torch.tensor(train_data.targets(), dtype=float, device=args.device)
+                new_responses = (response_weight * train_targets.unsqueeze(-1).unsqueeze(-1)).sum(dim=[0,1]).unsqueeze(0) / response_weight.sum(dim=[0,1],keepdim=True) / args.number_of_trees
+                model.set_response(new_responses)
             if isinstance(scheduler, ExponentialLR):
                 scheduler.step()
             val_scores = evaluate(

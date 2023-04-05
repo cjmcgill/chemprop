@@ -13,6 +13,7 @@ from chemprop.args import TrainArgs
 from chemprop.data import MoleculeDataLoader, MoleculeDataset, AtomBondScaler
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import compute_gnorm, compute_pnorm, NoamLR
+from .response_weights import response_weights
 
 
 def train(
@@ -26,6 +27,7 @@ def train(
     atom_bond_scaler: AtomBondScaler = None,
     logger: logging.Logger = None,
     writer: SummaryWriter = None,
+    dataset: MoleculeDataset = None,
 ) -> int:
     """
     Trains a model for an epoch.
@@ -217,6 +219,7 @@ def train(
             iter_count += 1
 
             loss.backward()
+
         if args.grad_clip:
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()

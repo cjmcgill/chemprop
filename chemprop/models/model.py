@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from .mpn import MPN
 from .ffn import build_ffn, MultiReadout
+from .soft_tree import ObliviousTreeReadout
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
@@ -38,6 +39,8 @@ class MoleculeModel(nn.Module):
             ]
 
         self.is_atom_bond_targets = args.is_atom_bond_targets
+
+        self.is_soft_tree_model = args.soft_tree_mode is not None
 
         if self.is_atom_bond_targets:
             self.atom_targets, self.bond_targets = args.atom_targets, args.bond_targets
@@ -136,6 +139,20 @@ class MoleculeModel(nn.Module):
                 shared_ffn=args.shared_atom_bond_ffn,
                 weights_ffn_num_layers=args.weights_ffn_num_layers,
             )
+        elif self.is_soft_tree_model:
+            if args.soft_tree_mode == "oblivious":
+                self.readout = ObliviousTreeReadout(
+                    args=args,
+                    input_dim=atom_first_linear_dim,
+                    hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
+                    num_layers=args.ffn_num_layers,
+                    output_size=self.relative_output_size * args.num_tasks,
+                    dropout=args.dropout,
+                    activation=args.activation,
+                    dataset_type=args.dataset_type,
+                )
+            else:  # soft_tree_mode == "binary"
+                pass
         else:
             self.readout = build_ffn(
                 first_linear_dim=atom_first_linear_dim,
@@ -231,6 +248,37 @@ class MoleculeModel(nn.Module):
             )
         else:
             raise ValueError(f"Unsupported fingerprint type {fingerprint_type}.")
+
+    def set_response(self, new_response: torch.tensor):
+        if self.is_soft_tree_model:
+            self.readout.set_response(new_response)
+
+    def response_weights(
+        self,
+        batch: Union[
+            List[List[str]],
+            List[List[Chem.Mol]],
+            List[List[Tuple[Chem.Mol, Chem.Mol]]],
+            List[BatchMolGraph],
+        ],
+        features_batch: List[np.ndarray] = None,
+        atom_descriptors_batch: List[np.ndarray] = None,
+        atom_features_batch: List[np.ndarray] = None,
+        bond_descriptors_batch: List[np.ndarray] = None,
+        bond_features_batch: List[np.ndarray] = None,
+        constraints_batch: List[torch.Tensor] = None,
+        bond_types_batch: List[torch.Tensor] = None,
+    ) -> torch.Tensor:
+            encodings = self.encoder(
+                batch,
+                features_batch,
+                atom_descriptors_batch,
+                atom_features_batch,
+                bond_descriptors_batch,
+                bond_features_batch,
+            )
+            output = self.readout.response_weights(encodings)
+            return output
 
     def forward(
         self,

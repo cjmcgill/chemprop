@@ -445,6 +445,22 @@ class TrainArgs(CommonArgs):
     Whether the bond types determined by RDKit molecules added to the output of bond targets. This option is intended to be used
     with the :code:`is_atom_bond_targets`.
     """
+    soft_tree_mode: Literal["oblivious", "binary"] = None
+    """What kind of soft trees to use. Either oblivious where the splitting is the same at each layer, regardless
+    of the choice made on the previous layer or binary where the splitting is different depending on the choice
+    made at a previous layer."""
+    soft_tree_feature_function: Literal["softmax", "entmax", "sigmoid", "linear"] = "linear"
+    """How to choose to emphasize or de-emphasize features"""
+    soft_tree_comparison_function: Literal["softmax", "entmax", "sigmoid"] = "softmax"
+    """How to choose the direction of the tree break down, left/right"""
+    layer_before_trees: bool = False
+    """Whether to have a single linear layer before the input to the soft trees forest"""
+    soft_tree_response_mode: Literal["learned", "clustered"] = "learned"
+    """Whether the response vector for the trees should be a """
+    number_of_trees: int = 100
+    """How many trees to train in parallel for soft tree mode"""
+    soft_tree_use_temperature: bool = False
+    """Whether to use a learned temperature multiplier to boost the comparison function"""
 
     # Training arguments
     epochs: int = 30
@@ -1079,12 +1095,14 @@ class HyperoptArgs(TrainArgs):
             "basic", "learning_rate", "linked_hidden_size", "all",
             "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr", "hidden_size",
-            "init_lr", "max_lr", "warmup_epochs"
+            "init_lr", "max_lr", "warmup_epochs",
+            "soft_tree_feature_function", "soft_tree_comparison_function", "layer_before_trees", "soft_tree_use_temperature", "number_of_trees",
         ]
         supported_parameters = [
             "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr_ratio", "hidden_size",
-            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs"
+            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs",
+            "soft_tree_feature_function", "soft_tree_comparison_function", "layer_before_trees", "soft_tree_use_temperature", "number_of_trees",
         ]
         unsupported_keywords = set(self.search_parameter_keywords) - set(supported_keywords)
         if len(unsupported_keywords) != 0:
