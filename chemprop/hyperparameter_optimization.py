@@ -51,6 +51,7 @@ def hyperopt(args: HyperoptArgs) -> None:
         "hidden_size",
         "linked_hidden_size",
         "warmup_epochs",
+        "number_of_trees"
     ]
 
     # Load in manual trials

@@ -37,7 +37,12 @@ def build_search_space(search_parameters: List[str], train_epochs: int = None) -
         "init_lr_ratio": hp.loguniform("init_lr_ratio", low=np.log(1e-4), high=0.),
         "linked_hidden_size": hp.quniform("linked_hidden_size", low=300, high=2400, q=100),
         "max_lr": hp.loguniform("max_lr", low=np.log(1e-6), high=np.log(1e-2)),
-        "warmup_epochs": hp.quniform("warmup_epochs", low=1, high=train_epochs // 2, q=1)
+        "warmup_epochs": hp.quniform("warmup_epochs", low=1, high=train_epochs // 2, q=1),
+        "soft_tree_feature_function": hp.choice("soft_tree_feature_function", options=["softmax", "sigmoid", "linear"]),
+        "soft_tree_comparison_function": hp.choice("soft_tree_comparison_function", options=["softmax", "sigmoid"]),
+        "layer_before_trees": hp.choice("layer_before_trees", options=[True, False]),
+        "soft_tree_use_temperature": hp.choice("soft_tree_use_temperature", options=[True, False]),
+        "number_of_trees": hp.quniform("number_of_trees", low=32, high=128, q=16),
     }
     space = {}
     for key in search_parameters:
