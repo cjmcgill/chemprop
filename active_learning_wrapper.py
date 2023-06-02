@@ -53,7 +53,8 @@ def active_learning(active_args: ActiveArgs):
     makedirs(active_args.active_save_dir)
     whole_data, nontest_data, test_data = get_test_split(active_args=active_args, save_test_nontest=False, save_indices=True)
     trainval_data, remaining_data = initial_trainval_split(active_args=active_args, nontest_data=nontest_data, whole_data=whole_data, save_data=False, save_indices=True)
-    spearmans,cv,rmses,rmses2 =[],[],[],[]
+    spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root =[],[],[],[],[],[],[],[],[]
+    # cv,rmses,rmses2,sharpness =[],[],[],[]
     print(active_args.train_sizes)
     for i in range(len(active_args.train_sizes)):
         active_args.iter_save_dir = os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}',f'pure{active_args.train_sizes[i]}')
@@ -85,11 +86,26 @@ def active_learning(active_args: ActiveArgs):
         get_pred_results2(active_args=active_args,whole_data=whole_data,iteration=i)# either need second get pred result or modify this function 
         save_results(active_args=active_args, test_data=test_data, nontest_data=nontest_data, whole_data=whole_data, iteration=i, save_whole_results=True, save_error=True)
         #now with more results to save- might not actually need to change 
-        spearmans.append(calculate_spearman(active_args=active_args, iteration=i))
-        cv.append(calculate_cv(active_args=active_args))
+        # spearmans,nll,miscalibration_area,ence.append(get_evaluation_scores(active_args=active_args))
+        #spearmans.append(calculate_spearman(active_args=active_args, iteration=i))
+        # cv.append(calculate_cv(active_args=active_args))
         rmses.append(get_rmse(active_args=active_args))
         rmses2.append(get_rmse2(active_args=active_args))#add rmse of comparison model -->Done
-        save_evaluations(active_args,spearmans,cv,rmses,rmses2)
+        # sharpness.append(calculate_sha(active_args=active_args))
+        spearman1,nll1,miscalibration_area1,ence1,sharpness1,sharpness_root1,cv1=get_evaluation_scores(active_args=active_args)
+        spearman.append(spearman1)
+        nll.append(nll1)
+        miscalibration_area.append(miscalibration_area1)
+        ence.append(ence1)
+        sharpness.append(sharpness1)
+        sharpness_root.append(sharpness_root1)
+        cv.append(cv1)
+        # print('---------------------------------------------')
+        # print(cv)
+        # print(rmses)
+        # print(nll)
+        # print(ence)
+        save_evaluations(active_args,spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root)
         
         #plot_result(active_args=active_args,rmses=rmses,spearmans=spearmans,cv=cv)
         cleanup_active_files(active_args=active_args, train_args=train_args, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)
@@ -327,10 +343,15 @@ def save_datainputs(active_args:ActiveArgs, trainval_data:MoleculeDataset,remain
 
 
 def run_predictions(active_args:ActiveArgs, train_args:TrainArgs) -> None:
+    
     argument_input=[
-        '--test_path', os.path.join(active_args.active_save_dir,'whole_smiles.csv'),
+        '--test_path', os.path.join(active_args.active_save_dir,'whole_full.csv'),
         '--checkpoint_dir', active_args.iter_save_dir,
         '--preds_path', os.path.join(active_args.iter_save_dir,'whole_preds.csv'),
+       '--evaluation_scores_path',os.path.join(active_args.iter_save_dir,'evaluation_scores.csv'),
+       '--evaluation_methods','nll','miscalibration_area', 'ence','spearman','sharpness','sharpness_root','cv',
+        # '--evaluation_methods',"".join(['nll', 'miscalibration_area', 'ence', 'spearman']),
+        # '--calibration_method','mve_weighting',
     ]
     if active_args.features_path is not None:
         argument_input.extend(['--features_path',os.path.join(active_args.active_save_dir,'whole_features.csv')])
@@ -522,6 +543,38 @@ def cleanup_active_files2(active_args:ActiveArgs, train_args2:TrainArgs, remove_
             if os.path.exists(path): os.remove(path)
 
 
+def calculate_sha(active_args):
+     with open(os.path.join(active_args.iter_save_dir, 'whole_preds.csv'), 'r') as f:
+        reader = csv.DictReader(f)
+        q=[]
+        for i, line in enumerate(tqdm(reader)):
+            if active_args.search_function =='mve'or active_args.search_function=='mve_ensemble':
+                for p in active_args.task_names:
+                    q.append(float(line[p+'_mve_uncal_var']))
+            elif active_args.search_function =='ensemble':
+                for p in active_args.task_names:
+                    q.append(float(line[p+'_ensemble_uncal_var']))    
+            elif active_args.search_function =='evidential'or active_args.search_function=='evidential_total':
+                for p in active_args.task_names:
+                    q.append(float(line[p+'_evidential_total_uncal_var'])) 
+            elif active_args.search_function =='evidential_aleatoric':
+                for p in active_args.task_names:
+                    q.append(float(line[p+'_evidential_aleatoric_var']))
+            elif active_args.search_function =='evidential_epistemic':
+                for p in active_args.task_names:
+                    q.append(float(line[p+'_evidential_epistemic_var']))
+            else:
+                q='random'
+        if q != 'random':        
+            sha=(sum(q)/len(q))
+        else:
+            sha='nan'
+        
+        return sha
+
+
+
+
 
 
 def calculate_spearman(active_args, iteration):
@@ -593,8 +646,7 @@ def calculate_cv(active_args):
             l=np.array((y-z)**2)
          
             k=(sum(l)/(len(l)-1))
-            print(k)
-            print(l)
+    
             cv=(np.sqrt(k))/(z)
         else:
             cv='nan'
@@ -618,16 +670,46 @@ def get_rmse2(active_args):
                 rmse2=float(line['Mean rmse'])
      return rmse2
 
+def get_evaluation_scores(active_args):
+    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'r') as file:
+        
+        csv_reader = csv.reader(file)
+        rows = list(csv_reader)
+        transposed_rows = list(zip(*rows))
+    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'w', newline='') as file:
+        csv_writer = csv.writer(file)
+        csv_writer.writerows(transposed_rows)
 
+    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'r') as f:
+        spearmans,nlls,miscalibration_areas,ences,sharpness,sharpness_root,cv=[],[],[],[],[],[],[]
+        reader = csv.DictReader(f) 
+        for i, line in enumerate(tqdm(reader)):
+            for j in active_args.task_names:
+                spearmans=float(line['spearman'])
+                nlls=float(line['nll'])
+                miscalibration_areas=float(line['miscalibration_area'])
+                ences=float(line['ence'])
+                sharpness=float(line['sharpness'])
+                sharpness_root=float(line['sharpness_root'])
+                cv=float(line['cv'])
+                # spearmans.append(float(line['spearman']))
+                # nlls.append(float(line['nll']))
+                # miscalibration_areas.append(float(line['miscalibration_area']))
+                # ences.append(float(line['ence']))
+
+    return spearmans,nlls,miscalibration_areas,ences,sharpness,sharpness_root,cv
+
+
+   
     
 
-def save_evaluations(active_args,spearmans,cv,rmses,rmses2):
+def save_evaluations(active_args,spearmans,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root):
     with open(os.path.join(active_args.active_save_dir,"uncertainty_evaluations.csv"), "w", newline="") as f:
         writer = csv.writer(f)
-        header = ["data_points","spearman","cv","rmse","rmse2"]
+        header = ["data_points","spearman","cv","sharpness","sharpness_root","rmse","rmse2","nll","miscalibration_area","ence"]
         writer.writerow(header)
-        for i in range(len(spearmans)):
-            new_row = [active_args.train_sizes[i],spearmans[i],cv[i],rmses[i],rmses2[i]]
+        for i in range(len(cv)):
+            new_row = [active_args.train_sizes[i],spearmans[i],cv[i],sharpness[i],sharpness_root[i],rmses[i],rmses2[i],nll[i],miscalibration_area[i],ence[i]]
             writer.writerow(new_row)
 
 
