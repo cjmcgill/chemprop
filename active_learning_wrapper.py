@@ -1,4 +1,3 @@
-#Import required library
 import matplotlib.pyplot as plt
 from tkinter import Y
 from chemprop.train.make_predictions import make_predictions
@@ -42,7 +41,7 @@ class ActiveArgs(Tap):
 
 def active_learning(active_args: ActiveArgs):
     train_args = get_initial_train_args(train_config_path=active_args.train_config_path, data_path=active_args.data_path,search_function=active_args.search_function)
-    train_args2 = get_initial_train_args(train_config_path=active_args.train_config_path2, data_path=active_args.data_path,search_function=active_args.search_function2)#different train_args for comparison
+    train_args2 = get_initial_train_args(train_config_path=active_args.train_config_path2, data_path=active_args.data_path,search_function=active_args.search_function2)
 
     active_args.split_type = train_args.split_type
     active_args.task_names = train_args.task_names
@@ -54,13 +53,12 @@ def active_learning(active_args: ActiveArgs):
     whole_data, nontest_data, test_data = get_test_split(active_args=active_args, save_test_nontest=False, save_indices=True)
     trainval_data, remaining_data = initial_trainval_split(active_args=active_args, nontest_data=nontest_data, whole_data=whole_data, save_data=False, save_indices=True)
     spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root =[],[],[],[],[],[],[],[],[]
-    # cv,rmses,rmses2,sharpness =[],[],[],[]
     print(active_args.train_sizes)
     for i in range(len(active_args.train_sizes)):
         active_args.iter_save_dir = os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}',f'pure{active_args.train_sizes[i]}')
         active_args.iter_save_dir2 = os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}',f'comparison{active_args.train_sizes[i]}')
         active_args.run_save_dir=os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}')
-        makedirs(active_args.iter_save_dir) # becomes more complicated-->Done
+        makedirs(active_args.iter_save_dir)
         makedirs(active_args.iter_save_dir2)
         if i != 0:
             trainval_data, remaining_data = update_trainval_split(
@@ -74,24 +72,17 @@ def active_learning(active_args: ActiveArgs):
             )
         
         save_datainputs(active_args=active_args, trainval_data=trainval_data, remaining_data=remaining_data, test_data=test_data)
-        #save_datainputs2(active_args=active_args, trainval_data=trainval_data, remaining_data=remaining_data, test_data=test_data)
-        update_train_args(active_args=active_args, train_args=train_args) #update this to have different path-->Done
-        update_train_args2(active_args=active_args, train_args=train_args2) #need a second update train_args for the comparison model-->Done
-        cross_validate(args=train_args, train_func=run_training) #change to train_args to train_args2
-        cross_validate(args=train_args2,train_func=run_training)#run second cross validate for comparison model-->Done
+        update_train_args(active_args=active_args, train_args=train_args) 
+        update_train_args2(active_args=active_args, train_args=train_args2) 
+        cross_validate(args=train_args, train_func=run_training) 
+        cross_validate(args=train_args2,train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args)
-        run_predictions2(active_args=active_args, train_args=train_args2) # need second one -->Done
-         #needs an update so results do not overwrite eachother
+        run_predictions2(active_args=active_args, train_args=train_args2)
         get_pred_results(active_args=active_args, whole_data=whole_data, iteration=i, save_error=True)
-        get_pred_results2(active_args=active_args,whole_data=whole_data,iteration=i)# either need second get pred result or modify this function 
+        get_pred_results2(active_args=active_args,whole_data=whole_data,iteration=i)
         save_results(active_args=active_args, test_data=test_data, nontest_data=nontest_data, whole_data=whole_data, iteration=i, save_whole_results=True, save_error=True)
-        #now with more results to save- might not actually need to change 
-        # spearmans,nll,miscalibration_area,ence.append(get_evaluation_scores(active_args=active_args))
-        #spearmans.append(calculate_spearman(active_args=active_args, iteration=i))
-        # cv.append(calculate_cv(active_args=active_args))
         rmses.append(get_rmse(active_args=active_args))
-        rmses2.append(get_rmse2(active_args=active_args))#add rmse of comparison model -->Done
-        # sharpness.append(calculate_sha(active_args=active_args))
+        rmses2.append(get_rmse2(active_args=active_args))
         spearman1,nll1,miscalibration_area1,ence1,sharpness1,sharpness_root1,cv1=get_evaluation_scores(active_args=active_args)
         spearman.append(spearman1)
         nll.append(nll1)
@@ -100,13 +91,7 @@ def active_learning(active_args: ActiveArgs):
         sharpness.append(sharpness1)
         sharpness_root.append(sharpness_root1)
         cv.append(cv1)
-        # print('---------------------------------------------')
-        # print(cv)
-        # print(rmses)
-        # print(nll)
-        # print(ence)
         save_evaluations(active_args,spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root)
-        
         #plot_result(active_args=active_args,rmses=rmses,spearmans=spearmans,cv=cv)
         cleanup_active_files(active_args=active_args, train_args=train_args, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)
         cleanup_active_files2(active_args=active_args, train_args2=train_args2, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)#different celanup paths-->Done
@@ -350,8 +335,6 @@ def run_predictions(active_args:ActiveArgs, train_args:TrainArgs) -> None:
         '--preds_path', os.path.join(active_args.iter_save_dir,'whole_preds.csv'),
        '--evaluation_scores_path',os.path.join(active_args.iter_save_dir,'evaluation_scores.csv'),
        '--evaluation_methods','nll','miscalibration_area', 'ence','spearman','sharpness','sharpness_root','cv',
-        # '--evaluation_methods',"".join(['nll', 'miscalibration_area', 'ence', 'spearman']),
-        # '--calibration_method','mve_weighting',
     ]
     if active_args.features_path is not None:
         argument_input.extend(['--features_path',os.path.join(active_args.active_save_dir,'whole_features.csv')])
@@ -465,7 +448,7 @@ def save_results(active_args:ActiveArgs, test_data:MoleculeDataset, nontest_data
                 writer.writerow(d.output)
     
 
-def update_trainval_split(# save dir needs to change for comaprison and unc model
+def update_trainval_split(
     new_trainval_size: int, 
     iteration: int,
     active_args: ActiveArgs,
@@ -692,10 +675,7 @@ def get_evaluation_scores(active_args):
                 sharpness=float(line['sharpness'])
                 sharpness_root=float(line['sharpness_root'])
                 cv=float(line['cv'])
-                # spearmans.append(float(line['spearman']))
-                # nlls.append(float(line['nll']))
-                # miscalibration_areas.append(float(line['miscalibration_area']))
-                # ences.append(float(line['ence']))
+
 
     return spearmans,nlls,miscalibration_areas,ences,sharpness,sharpness_root,cv
 
