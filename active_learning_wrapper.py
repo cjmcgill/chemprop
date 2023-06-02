@@ -92,7 +92,6 @@ def active_learning(active_args: ActiveArgs):
         sharpness_root.append(sharpness_root1)
         cv.append(cv1)
         save_evaluations(active_args,spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root)
-        #plot_result(active_args=active_args,rmses=rmses,spearmans=spearmans,cv=cv)
         cleanup_active_files(active_args=active_args, train_args=train_args, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)
         cleanup_active_files2(active_args=active_args, train_args2=train_args2, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)#different celanup paths-->Done
 
@@ -526,115 +525,15 @@ def cleanup_active_files2(active_args:ActiveArgs, train_args2:TrainArgs, remove_
             if os.path.exists(path): os.remove(path)
 
 
-def calculate_sha(active_args):
-     with open(os.path.join(active_args.iter_save_dir, 'whole_preds.csv'), 'r') as f:
-        reader = csv.DictReader(f)
-        q=[]
-        for i, line in enumerate(tqdm(reader)):
-            if active_args.search_function =='mve'or active_args.search_function=='mve_ensemble':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_mve_uncal_var']))
-            elif active_args.search_function =='ensemble':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_ensemble_uncal_var']))    
-            elif active_args.search_function =='evidential'or active_args.search_function=='evidential_total':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_total_uncal_var'])) 
-            elif active_args.search_function =='evidential_aleatoric':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_aleatoric_var']))
-            elif active_args.search_function =='evidential_epistemic':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_epistemic_var']))
-            else:
-                q='random'
-        if q != 'random':        
-            sha=(sum(q)/len(q))
-        else:
-            sha='nan'
-        
-        return sha
 
 
 
 
 
 
-def calculate_spearman(active_args, iteration):
-    with open(os.path.join(active_args.run_save_dir, '../test_results.csv'), 'r') as f:
-        reader = csv.DictReader(f)
-        x,y = [],[] 
-        if active_args.search_function != 'random':
-            for i, line in enumerate(tqdm(reader)):
-                for j in active_args.task_names:
-                    x.append(float(line[j+f'_unc_{active_args.train_sizes[iteration]}']))
-                    y.append(float(line[j+f'_error_{active_args.train_sizes[iteration]}']))
-            spearman, p_value = spearmanr(x, y)
-        else:
-            spearman='nan'
-    
-    return spearman
 
-def calculate_cv(active_args):
-    with open(os.path.join(active_args.iter_save_dir, 'whole_preds.csv'), 'r') as f:
-        reader = csv.DictReader(f)
-        x,y,z,l,k,q,cv= [],[],[],[],[],[],[]
-        
-        for i, line in enumerate(tqdm(reader)):
-            if active_args.search_function =='mve'or active_args.search_function=='mve_ensemble':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_mve_uncal_var']))
-            
-                z=sum(q)/len(q)
-                 
-                for j in active_args.task_names:
-                    x.append(float(line[j+'_mve_uncal_var']))
-            elif active_args.search_function =='ensemble':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_ensemble_uncal_var']))
-            
-                z=sum(q)/len(q)
-                 
-                for j in active_args.task_names:
-                    x.append(float(line[j+'_ensemble_uncal_var']))
-            elif active_args.search_function =='evidential'or active_args.search_function=='evidential_total':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_total_uncal_var']))
-            
-                z=sum(q)/len(q)
-                 
-                for j in active_args.task_names:
-                    x.append(float(line[j+'_evidential_total_uncal_var']))
-            elif active_args.search_function =='evidential_aleatoric':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_aleatoric_var']))
-            
-                z=sum(q)/len(q)
-                 
-                for j in active_args.task_names:
-                    x.append(float(line[j+'_evidential_aleatoric_var']))
-            elif active_args.search_function =='evidential_epistemic':
-                for p in active_args.task_names:
-                    q.append(float(line[p+'_evidential_epistemic_var']))
-            
-                z=sum(q)/len(q)
-                 
-                for j in active_args.task_names:
-                    x.append(float(line[j+'_evidential_epistemic_var']))
-            else:
-                x='random'
-        if x != 'random':        
-            y=np.sqrt(np.array(x))
-        
-            l=np.array((y-z)**2)
-         
-            k=(sum(l)/(len(l)-1))
-    
-            cv=(np.sqrt(k))/(z)
-        else:
-            cv='nan'
-        
-    return cv
+
+
 
 
 def get_rmse(active_args):
@@ -693,32 +592,7 @@ def save_evaluations(active_args,spearmans,cv,rmses,rmses2,sharpness,nll,miscali
             writer.writerow(new_row)
 
 
-#plot rmse vs data points
-#def plot_result(active_args,rmses,spearmans,cv):
-        # x,y,z,k=[],[],[],[]
-        # y=rmses
-        # x=active_args.train_sizes
-        # z=spearmans
-        # k=cv
-        # print(x)
-        # print(y)
-        # if len(x)==len(y):
-        #     plt.scatter(x, y)
-        #     plt.plot(x, y, '-')
-        #     plt.xlabel("Data Points")
-        #     plt.ylabel("RMSE")
-        #     plt.grid(True)
-        #     plt.savefig(os.path.join(active_args.active_save_dir,'rmse_plot.png'))
-        #     plt.scatter(x,z)
-        #     plt.xlabel("Data Points")
-        #     plt.ylabel("SpearMan")
-        #     plt.grid(True)
-        #     plt.savefig(os.path.join(active_args.active_save_dir,'spearman_plot.png'))
-        #     plt.scatter(x,k)
-        #     plt.xlabel("Data Points")
-        #     plt.ylabel("Coefficient Variance")
-        #     plt.grid(True)
-        #     plt.savefig(os.path.join(active_args.active_save_dir,'cv_plot.png'))
+
 
 
 if __name__ == '__main__':
