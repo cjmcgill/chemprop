@@ -1,0 +1,21 @@
+Creating search space using parameters ['dropout', 'depth', 'ffn_num_layers', 'linked_hidden_size'].
+No manual trials loaded as part of hyperparameter search
+Initiating trial with seed 0
+Loaded 0 previous trials
+Parameters assigned with random search, 1 random trials remaining
+Trial results with seed 0
+{'depth': 5, 'dropout': 0.1, 'ffn_num_layers': 1, 'linked_hidden_size': 1700}
+num params: 6,259,401
+0.9789612131126953 +/- 0.0 rmse
+Initiating trial with seed 1
+Loaded 1 previous trials
+Parameters assigned with TPE directed search
+Trial results with seed 1
+{'depth': 6, 'dropout': 0.05, 'ffn_num_layers': 1, 'linked_hidden_size': 1800}
+num params: 6,987,601
+0.964376185295765 +/- 0.0 rmse
+Best trial, with seed 1
+{'depth': 6, 'dropout': 0.05, 'ffn_num_layers': 1, 'linked_hidden_size': 1800}
+num params: 6,987,601
+0.964376185295765 +/- 0.0 rmse
+Elapsed time = 0:04:39

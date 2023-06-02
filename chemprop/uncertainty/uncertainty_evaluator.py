@@ -403,6 +403,136 @@ class ExpectedNormalizedErrorEvaluator(UncertaintyEvaluator):
         return ence.tolist()
 
 
+
+
+class SharpnessEvaluator(UncertaintyEvaluator):
+   
+
+    def raise_argument_errors(self):
+        super().raise_argument_errors()
+        if self.dataset_type != "regression":
+            raise ValueError(
+                "Sharpness is only appropriate for regression dataset types."
+            )
+
+    def evaluate(
+        self,
+        targets: List[List[float]],
+        preds: List[List[float]],
+        uncertainties: List[List[float]],
+        mask: List[List[bool]],
+    ):
+        targets = np.array(targets)  # shape(data, tasks)
+        uncertainties = np.array(uncertainties)
+        mask = np.array(mask)
+        num_tasks = len(mask)
+        preds = np.array(preds)
+        sha,shar = [],[]
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+            preds = np.array(list(zip(*preds)))
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            task_unc = uncertainties[i][task_mask]
+            shar=(sum(task_unc)/len(task_unc))
+            sha.append(shar)
+            
+        return sha
+
+
+
+class Sharpness_rootEvaluator(UncertaintyEvaluator):
+   
+
+    def raise_argument_errors(self):
+        super().raise_argument_errors()
+        if self.dataset_type != "regression":
+            raise ValueError(
+                "Sharpness is only appropriate for regression dataset types."
+            )
+
+    def evaluate(
+        self,
+        targets: List[List[float]],
+        preds: List[List[float]],
+        uncertainties: List[List[float]],
+        mask: List[List[bool]],
+    ):
+        targets = np.array(targets)  # shape(data, tasks)
+        uncertainties = np.array(uncertainties)
+        mask = np.array(mask)
+        num_tasks = len(mask)
+        preds = np.array(preds)
+        shar,sha_root = [],[]
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+            preds = np.array(list(zip(*preds)))
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            task_unc = uncertainties[i][task_mask]
+            shar=(sum(task_unc)/len(task_unc))
+            sha_root.append(np.sqrt(shar))
+            
+        return sha_root
+
+
+class CoeffcientVarianceEvaluator(UncertaintyEvaluator):
+   
+
+    def raise_argument_errors(self):
+        super().raise_argument_errors()
+        if self.dataset_type != "regression":
+            raise ValueError(
+                "Sharpness is only appropriate for regression dataset types."
+            )
+
+    def evaluate(
+        self,
+        targets: List[List[float]],
+        preds: List[List[float]],
+        uncertainties: List[List[float]],
+        mask: List[List[bool]],
+    ):
+        targets = np.array(targets)  # shape(data, tasks)
+        uncertainties = np.array(uncertainties)
+        mask = np.array(mask)
+        num_tasks = len(mask)
+        preds = np.array(preds)
+        cv,q,l,k,cvs = [],[],[],[],[]
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+            preds = np.array(list(zip(*preds)))
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            task_unc = uncertainties[i][task_mask]
+            q=sum(task_unc)/len(task_unc)
+            x=np.sqrt(np.array(task_unc))
+            l=np.array((x-q)**2)
+            k=(sum(l)/(len(l)-1))
+            cvs=(np.sqrt(k))/(q)
+            cv.append(cvs)
+        return cv
+
+
+
 class SpearmanEvaluator(UncertaintyEvaluator):
     """
     Class evaluating uncertainty performance using the spearman rank correlation. Method produces
@@ -473,6 +603,9 @@ def build_uncertainty_evaluator(
         "miscalibration_area": CalibrationAreaEvaluator,
         "ence": ExpectedNormalizedErrorEvaluator,
         "spearman": SpearmanEvaluator,
+        "sharpness": SharpnessEvaluator,
+        "sharpness_root": Sharpness_rootEvaluator,
+        "cv": CoeffcientVarianceEvaluator
     }
 
     classification_metrics = [
@@ -506,3 +639,11 @@ def build_uncertainty_evaluator(
             is_atom_bond_targets=is_atom_bond_targets,
         )
         return evaluator
+
+
+
+
+
+
+
+

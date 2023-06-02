@@ -56,7 +56,7 @@ def run_split_data(args: Args):
     makedirs(args.save_dir)
 
     for name, dataset in [('train', train), ('val', val), ('test', test)]:
-        with open(os.path.join(args.save_dir, f'{name}.csv'), 'w') as f:
+        with open(os.path.join(args.save_dir, f'{name}.csv'), 'w',newline="") as f:
             writer = csv.writer(f)
             writer.writerow(header)
             for datapoint in dataset:

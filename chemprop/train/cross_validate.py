@@ -162,7 +162,7 @@ def cross_validate(args: TrainArgs,
             is to include them in the average, converting overall average metrics to 'nan' as well.")
 
     # Save scores
-    with open(os.path.join(save_dir, TEST_SCORES_FILE_NAME), 'w') as f:
+    with open(os.path.join(save_dir, TEST_SCORES_FILE_NAME), 'w',newline="") as f:
         writer = csv.writer(f)
 
         header = ['Task']

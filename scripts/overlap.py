@@ -36,7 +36,7 @@ def overlap(args: Args):
     print(f'Size of intersection as frac of dataset 2: {size_intersect / size_2}')
 
     if args.save_intersection_path is not None:
-        with open(args.data_path_1, 'r') as rf, open(args.save_intersection_path, 'w') as wf:
+        with open(args.data_path_1, 'r') as rf, open(args.save_intersection_path, 'w',newline="") as wf:
             reader, writer = csv.reader(rf), csv.writer(wf)
             header = next(reader)
             writer.writerow(header)
@@ -45,7 +45,7 @@ def overlap(args: Args):
                     writer.writerow(line)
 
     if args.save_difference_path is not None:
-        with open(args.data_path_1, 'r') as rf, open(args.save_difference_path, 'w') as wf:
+        with open(args.data_path_1, 'r') as rf, open(args.save_difference_path, 'w',newline="") as wf:
             reader, writer = csv.reader(rf), csv.writer(wf)
             header = next(reader)
             writer.writerow(header)
