@@ -1,15 +1,11 @@
-import matplotlib.pyplot as plt
-from tkinter import Y
 from chemprop.train.make_predictions import make_predictions
 import os
 import shutil
 import csv
 import json
 import pickle
-import math
 from typing import List, Tuple, Set
 from typing_extensions import Literal
-from scipy.stats import spearmanr
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
@@ -19,23 +15,27 @@ from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
 from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
 
-#commands that is needed to run active learning
-class ActiveArgs(Tap):
-    active_save_dir: str #save path
-    train_config_path: str # path to a json containing all the arguments usually included in a training submission, except for path arguments
-    train_config_path2: str #path to a json containing all the arguments usually included in a training submission to train the comparison model
-    data_path: str #dataset path
+
+class ActiveArgs(Tap):  # commands that is needed to run active learning
+
+    active_save_dir: str  # save path
+    train_config_path: str 
+    """
+      path to a json containing all the arguments usually included in a training submission, except for path arguments
+    """
+    train_config_path2: str  # path to a json containing all the arguments usually included in a training submission to train the comparison model
+    data_path: str  #dataset path
     features_path: List[str] = None
-    active_test_path: str = None # only use if separate from what's in the data file. If a subset, instead use the indices pickle.
+    active_test_path: str = None #only use if separate from what's in the data file. If a subset, instead use the indices pickle.
     active_test_features_path: List[str] = None
-    active_test_indices_path: str = None # path to pickle file containing a list of indices for the test set out of the whole data path
-    initial_trainval_indices_path: str = None # path to pickle file containing a list of indices for data in data path
+    active_test_indices_path: str = None #path to pickle file containing a list of indices for the test set out of the whole data path
+    initial_trainval_indices_path: str = None #path to pickle file containing a list of indices for data in data path
     search_function: Literal['ensemble','random','mve','mve_ensemble','evidential', 'evidential_epistemic','evidential_aleatoric','evidential_total']='random'  # which function to use for choosing what molecules to add to trainval from the pool
     search_function2: Literal ['ensemble','random','mve','mve_ensemble','evidential', 'evidential_epistemic','evidential_aleatoric','evidential_total']='ensemble'
-    test_fraction: float = 0.1 # This is the fraction of data used for test if a separate test set is not provided.
+    test_fraction: float = 0.1 #This is the fraction of data used for test if a separate test set is not provided.
     initial_trainval_fraction: float = None
-    active_batch_size: int = None # the number of data points added to trainval in each cycle
-    active_iterations_limit: int = None # the max number of training iterations to go through
+    active_batch_size: int = None #the number of data points added to trainval in each cycle
+    active_iterations_limit: int = None #the max number of training iterations to go through
 
 
 
