@@ -19,30 +19,48 @@ from chemprop.utils import makedirs
 class ActiveArgs(Tap):  # commands that is needed to run active learning
 
     active_save_dir: str  # save path
-    train_config_path: str 
-    """
-      path to a json containing all the arguments usually included in a training submission, except for path arguments
-    """
-    train_config_path2: str  # path to a json containing all the arguments usually included in a training submission to train the comparison model
-    data_path: str  #dataset path
+    train_config_path: str  # path to a json containing all the arguments
+    # usually included in a training submission, except for path arguments
+    train_config_path2: str  # path to a json containing all the arguments
+    # usually included in a training submission to train the comparison model
+    data_path: str  # dataset path
     features_path: List[str] = None
-    active_test_path: str = None #only use if separate from what's in the data file. If a subset, instead use the indices pickle.
+    active_test_path: str = None  # only use if separate from what's
+    # in the data file. If a subset, instead use the indices pickle.
     active_test_features_path: List[str] = None
-    active_test_indices_path: str = None #path to pickle file containing a list of indices for the test set out of the whole data path
-    initial_trainval_indices_path: str = None #path to pickle file containing a list of indices for data in data path
-    search_function: Literal['ensemble','random','mve','mve_ensemble','evidential', 'evidential_epistemic','evidential_aleatoric','evidential_total']='random'  # which function to use for choosing what molecules to add to trainval from the pool
-    search_function2: Literal ['ensemble','random','mve','mve_ensemble','evidential', 'evidential_epistemic','evidential_aleatoric','evidential_total']='ensemble'
-    test_fraction: float = 0.1 #This is the fraction of data used for test if a separate test set is not provided.
+    active_test_indices_path: str = None  # path to pickle file containing a
+    # list of indices for the test set out of the whole data path
+    initial_trainval_indices_path: str = None  # path to pickle file containing
+    # a list of indices for data in data path
+    search_function: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
+                             'evidential', 'evidential_epistemic',
+                             'evidential_aleatoric', 'evidential_total',
+                             ] = 'random'  # which function to use for
+    # choosing what molecules to add to trainval from the pool
+    search_function2: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
+                              'evidential', 'evidential_epistemic',
+                              'evidential_aleatoric', 'evidential_total',
+                              ] = 'ensemble'
+    test_fraction: float = 0.1  # This is the fraction of data used for test
+    # if a separate test set is not provided.
     initial_trainval_fraction: float = None
-    active_batch_size: int = None #the number of data points added to trainval in each cycle
-    active_iterations_limit: int = None #the max number of training iterations to go through
-
+    active_batch_size: int = None  # the number of data points added
+    # to trainval in each cycle
+    active_iterations_limit: int = None  # the max number of
+    # training iterations to go through
 
 
 def active_learning(active_args: ActiveArgs):
-    train_args = get_initial_train_args(train_config_path=active_args.train_config_path, data_path=active_args.data_path,search_function=active_args.search_function)
-    train_args2 = get_initial_train_args(train_config_path=active_args.train_config_path2, data_path=active_args.data_path,search_function=active_args.search_function2)
-
+    train_args = get_initial_train_args(
+        train_config_path=active_args.train_config_path,
+        data_path=active_args.data_path,
+        search_function=active_args.search_function,
+    )
+    train_args2 = get_initial_train_args(
+        train_config_path=active_args.train_config_path2,
+        data_path=active_args.data_path,
+        search_function=active_args.search_function2,
+    )
     active_args.split_type = train_args.split_type
     active_args.task_names = train_args.task_names
     active_args.smiles_columns = train_args.smiles_columns
@@ -50,14 +68,36 @@ def active_learning(active_args: ActiveArgs):
     active_args.feature_names = get_feature_names(active_args=active_args)
 
     makedirs(active_args.active_save_dir)
-    whole_data, nontest_data, test_data = get_test_split(active_args=active_args, save_test_nontest=False, save_indices=True)
-    trainval_data, remaining_data = initial_trainval_split(active_args=active_args, nontest_data=nontest_data, whole_data=whole_data, save_data=False, save_indices=True)
-    spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root =[],[],[],[],[],[],[],[],[]
+    whole_data, nontest_data, test_data = get_test_split(
+        active_args=active_args,
+        save_test_nontest=False,
+        save_indices=True,
+    )
+    trainval_data, remaining_data = initial_trainval_split(
+        active_args=active_args,
+        nontest_data=nontest_data,
+        whole_data=whole_data,
+        save_data=False,
+        save_indices=True,
+    )
+    spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
+    nll, miscalibration_area, ence, sharpness_root = [], [], [], []
     print(active_args.train_sizes)
     for i in range(len(active_args.train_sizes)):
-        active_args.iter_save_dir = os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}',f'pure{active_args.train_sizes[i]}')
-        active_args.iter_save_dir2 = os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}',f'comparison{active_args.train_sizes[i]}')
-        active_args.run_save_dir=os.path.join(active_args.active_save_dir,f'train{active_args.train_sizes[i]}')
+        active_args.iter_save_dir = os.path.join(
+            active_args.active_save_dir,
+            f'train{active_args.train_sizes[i]}',
+            f'pure{active_args.train_sizes[i]}',
+        )
+        active_args.iter_save_dir2 = os.path.join(
+            active_args.active_save_dir,
+            f'train{active_args.train_sizes[i]}',
+            f'comparison{active_args.train_sizes[i]}',
+        )
+        active_args.run_save_dir = os.path.join(
+            active_args.active_save_dir,
+            f'train{active_args.train_sizes[i]}',
+        )
         makedirs(active_args.iter_save_dir)
         makedirs(active_args.iter_save_dir2)
         if i != 0:
@@ -70,50 +110,108 @@ def active_learning(active_args: ActiveArgs):
                 save_full_indices=True,
                 iteration=i,
             )
-        
-        save_datainputs(active_args=active_args, trainval_data=trainval_data, remaining_data=remaining_data, test_data=test_data)
-        update_train_args(active_args=active_args, train_args=train_args) 
-        update_train_args2(active_args=active_args, train_args=train_args2) 
-        cross_validate(args=train_args, train_func=run_training) 
-        cross_validate(args=train_args2,train_func=run_training)
+        save_datainputs(
+            active_args=active_args,
+            trainval_data=trainval_data,
+            remaining_data=remaining_data,
+            test_data=test_data,
+        )
+        update_train_args(active_args=active_args, train_args=train_args)
+        update_train_args2(active_args=active_args, train_args=train_args2)
+        cross_validate(args=train_args, train_func=run_training)
+        cross_validate(args=train_args2, train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args)
         run_predictions2(active_args=active_args, train_args=train_args2)
-        get_pred_results(active_args=active_args, whole_data=whole_data, iteration=i, save_error=True)
-        get_pred_results2(active_args=active_args,whole_data=whole_data,iteration=i)
-        save_results(active_args=active_args, test_data=test_data, nontest_data=nontest_data, whole_data=whole_data, iteration=i, save_whole_results=True, save_error=True)
+        get_pred_results(
+            active_args=active_args,
+            whole_data=whole_data,
+            iteration=i,
+            save_error=True,
+        )
+        get_pred_results2(
+            active_args=active_args,
+            whole_data=whole_data,
+            iteration=i,
+        )
+        save_results(
+            active_args=active_args,
+            test_data=test_data,
+            nontest_data=nontest_data,
+            whole_data=whole_data,
+            iteration=i,
+            save_whole_results=True,
+            save_error=True,
+        )
         rmses.append(get_rmse(active_args=active_args))
         rmses2.append(get_rmse2(active_args=active_args))
-        spearman1,nll1,miscalibration_area1,ence1,sharpness1,sharpness_root1,cv1=get_evaluation_scores(active_args=active_args)
+        spearman1, nll1, miscalibration_area1, ence1, sharpness1, \
+            shar_root1, cv1 = get_evaluation_scores(active_args=active_args)
         spearman.append(spearman1)
         nll.append(nll1)
         miscalibration_area.append(miscalibration_area1)
         ence.append(ence1)
         sharpness.append(sharpness1)
-        sharpness_root.append(sharpness_root1)
+        sharpness_root.append(shar_root1)
         cv.append(cv1)
-        save_evaluations(active_args,spearman,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root)
-        cleanup_active_files(active_args=active_args, train_args=train_args, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)
-        cleanup_active_files2(active_args=active_args, train_args2=train_args2, remove_models=True, remove_datainputs=True, remove_preds=False, remove_indices=False)#different celanup paths-->Done
-
-
+        save_evaluations(
+            active_args,
+            spearman,
+            cv,
+            rmses,
+            rmses2,
+            sharpness,
+            nll,
+            miscalibration_area,
+            ence,
+            sharpness_root,
+        )
+        cleanup_active_files(
+            active_args=active_args,
+            train_args=train_args,
+            remove_models=True,
+            remove_datainputs=True,
+            remove_preds=False,
+            remove_indices=False,
+        )
+        cleanup_active_files2(
+            active_args=active_args,
+            train_args2=train_args2,
+            remove_models=True,
+            remove_datainputs=True,
+            remove_preds=False,
+            remove_indices=False,
+        )
 
 
 # extract config settings from config json file
-def get_initial_train_args(train_config_path:str,data_path:str,search_function):
+def get_initial_train_args(
+        train_config_path: str,
+        data_path: str,
+        search_function,
+):
     with open(train_config_path) as f:
         config_dict = json.load(f)
     config_keys = config_dict.keys()
     if any(['path' in key for key in config_keys]):
-        raise ValueError('All path arguments should be determined by the active_learning wrapper and not supplied in the config file.')
+        raise ValueError('All path arguments should be determined by \
+                          the active_learning wrapper and not supplied \
+                         in the config file.')
     dataset_type = config_dict['dataset_type']
-    commandline_inputs = ['--data_path',data_path,'--config_path',train_config_path,'--dataset_type',dataset_type]
+    commandline_inputs = [
+        '--data_path', data_path,
+        '--config_path', train_config_path,
+        '--dataset_type', dataset_type
+    ]
     if search_function == 'mve':
-        commandline_inputs.extend(['--loss_function','mve'])
+        commandline_inputs.extend(['--loss_function', 'mve'])
     elif search_function == 'mve_ensemble':
-        commandline_inputs.extend(['--loss_function','mve'])
-    elif search_function == 'evidential'or search_function == 'evidential_total'or search_function == 'evidential_aleatoric'or search_function == 'evidential_epistemic':
-        commandline_inputs.extend(['--loss_function','evidential'])
-    initial_train_args=TrainArgs().parse_args(commandline_inputs)
+        commandline_inputs.extend(['--loss_function', 'mve'])
+    elif search_function == 'evidential' or \
+        search_function == 'evidential_total' \
+        or search_function == 'evidential_aleatoric' or \
+            search_function == 'evidential_epistemic':
+        commandline_inputs.extend(['--loss_function', 'evidential'])
+    initial_train_args = TrainArgs().parse_args(commandline_inputs)
 
     initial_train_args.task_names = get_task_names(
         path=data_path,
@@ -121,14 +219,18 @@ def get_initial_train_args(train_config_path:str,data_path:str,search_function):
         target_columns=initial_train_args.target_columns,
         ignore_columns=initial_train_args.ignore_columns
     )
-    assert initial_train_args.num_tasks==1
+    assert initial_train_args.num_tasks == 1
 
     return initial_train_args
 
 
-def get_test_split(active_args: ActiveArgs, save_test_nontest: bool = True, save_indices: bool = True) -> Tuple[MoleculeDataset]:
+def get_test_split(
+        active_args: ActiveArgs,
+        save_test_nontest: bool = True,
+        save_indices: bool = True
+ ) -> Tuple[MoleculeDataset]:
 
-    data=get_data(
+    data = get_data(
         path=active_args.data_path,
         features_path=active_args.features_path,
         smiles_columns=active_args.smiles_columns,
@@ -137,7 +239,8 @@ def get_test_split(active_args: ActiveArgs, save_test_nontest: bool = True, save
     )
 
     if active_args.active_test_path is not None:
-        assert (active_args.active_test_features_path is None) == (active_args.features_path is None)
+        assert (active_args.active_test_features_path is None) == \
+            (active_args.features_path is None)
         assert active_args.active_test_indices_path is None
         test_data = get_data(
             path=active_args.active_test_path,
@@ -147,48 +250,74 @@ def get_test_split(active_args: ActiveArgs, save_test_nontest: bool = True, save
             features_generator=active_args.features_generator,
         )
         nontest_data = data
-        whole_data = MoleculeDataset([d for d in nontest_data]+[d for d in test_data])
-        for i,d in enumerate(tqdm(whole_data)):
-            d.index=i
+        whole_data = MoleculeDataset(
+            [d for d in nontest_data] + [d for d in test_data]
+        )
+        for i, d in enumerate(tqdm(whole_data)):
+            d.index = i
         if save_indices:
-            nontest_indices=set(range(len(nontest_data)))
-            test_indices=set(range(len(nontest_data),len(nontest_data)+len(test_data)))
+            nontest_indices = set(range(len(nontest_data)))
+            test_indices = set(
+                range(len(nontest_data),
+                      len(nontest_data)+len(test_data))
+            )
 
     elif active_args.active_test_indices_path is not None:
         with open(active_args.active_test_indices_path, 'rb') as f:
             test_indices = pickle.load(f)
             num_data = len(data)
-            nontest_indices = {i for i in range(num_data) if i not in test_indices}
+            nontest_indices = {
+                i for i in range(num_data) if i not in test_indices
+            }
             test_data = MoleculeDataset([data[i] for i in test_indices])
             nontest_data = MoleculeDataset([data[i] for i in nontest_indices])
         whole_data = data
-        for i,d in enumerate(tqdm(whole_data)):
-            d.index=i
+        for i, d in enumerate(tqdm(whole_data)):
+            d.index = i
 
     else:
-        for i,d in enumerate(tqdm(data)):
-            d.index=i
-        sizes=(1-active_args.test_fraction, active_args.test_fraction, 0)
-        nontest_data, test_data, _ = split_data(data=data, split_type=active_args.split_type, sizes=sizes)
+        for i, d in enumerate(tqdm(data)):
+            d.index = i
+        sizes = (1-active_args.test_fraction, active_args.test_fraction, 0)
+        nontest_data, test_data, _ = split_data(
+            data=data,
+            split_type=active_args.split_type,
+            sizes=sizes
+        )
         if save_indices:
             nontest_indices = {d.index for d in nontest_data}
             test_indices = {d.index for d in test_data}
         whole_data = data
-    
     for d in whole_data:
         d.output = dict()
-        for s,smiles in enumerate(active_args.smiles_columns):
+        for s, smiles in enumerate(active_args.smiles_columns):
             d.output[smiles] = d.smiles[s]
-        for t,target in enumerate(active_args.task_names):
+        for t, target in enumerate(active_args.task_names):
             d.output[target] = d.targets[t]
-    
-    save_dataset(data=whole_data, save_dir=active_args.active_save_dir, filename_base='whole', active_args=active_args)
+    save_dataset(
+        data=whole_data, save_dir=active_args.active_save_dir,
+        filename_base='whole', active_args=active_args,
+    )
     if save_test_nontest:
-        save_dataset(data=nontest_data, save_dir=active_args.active_save_dir, filename_base='nontest', active_args=active_args)
-        save_dataset(data=test_data, save_dir=active_args.active_save_dir, filename_base='test', active_args=active_args)
+        save_dataset(
+            data=nontest_data, save_dir=active_args.active_save_dir,
+            filename_base='nontest', active_args=active_args,
+        )
+        save_dataset(
+            data=test_data, save_dir=active_args.active_save_dir,
+            filename_base='test', active_args=active_args,
+        )
     if save_indices:
-        save_dataset_indices(indices=nontest_indices, save_dir=active_args.active_save_dir, filename_base='nontest')
-        save_dataset_indices(indices=test_indices, save_dir=active_args.active_save_dir, filename_base='test')
+        save_dataset_indices(
+            indices=nontest_indices,
+            save_dir=active_args.active_save_dir,
+            filename_base='nontest',
+         )
+        save_dataset_indices(
+            indices=test_indices,
+            save_dir=active_args.active_save_dir,
+            filename_base='test',
+        )
 
     return whole_data, nontest_data, test_data
 
@@ -475,12 +604,12 @@ def update_trainval_split(
     updated_remaining_data = MoleculeDataset([d for d in previous_remaining_data if d.index not in new_data_indices])
 
     if save_new_indices:
-        save_dataset_indices(indices=new_data_indices, save_dir=active_args.iter_save_dir, filename_base='new_trainval')
+        save_dataset_indices(indices = new_data_indices, save_dir = active_args.iter_save_dir, filename_base = 'new_trainval')
     if save_full_indices:
         updated_trainval_indices = {d.index for d in updated_trainval_data}
         updated_remaining_indices = {d.index for d in updated_remaining_data}
-        save_dataset_indices(indices=updated_trainval_indices, save_dir=active_args.iter_save_dir, filename_base='updated_trainval')
-        save_dataset_indices(indices=updated_remaining_indices, save_dir=active_args.iter_save_dir, filename_base='updated_remaining')
+        save_dataset_indices(indices = updated_trainval_indices, save_dir = active_args.iter_save_dir, filename_base = 'updated_trainval')
+        save_dataset_indices(indices = updated_remaining_indices, save_dir = active_args.iter_save_dir, filename_base = 'updated_remaining')
     
     return updated_trainval_data, updated_remaining_data
 
@@ -541,7 +670,7 @@ def get_rmse(active_args):
         reader = csv.DictReader(f) 
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
-                rmse=float(line['Mean rmse'])
+                rmse = float(line['Mean rmse'])
      return rmse
 
 def get_rmse2(active_args):
@@ -562,40 +691,49 @@ def get_evaluation_scores(active_args):
         csv_writer = csv.writer(file)
         csv_writer.writerows(transposed_rows)
 
-    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'r') as f:
-        spearmans,nlls,miscalibration_areas,ences,sharpness,sharpness_root,cv=[],[],[],[],[],[],[]
-        reader = csv.DictReader(f) 
+    with open(os.path.join(
+        active_args.iter_save_dir,
+        'evaluation_scores.csv'
+    ), 'r') as f:
+        spearmans, nlls, miscalibration_areas, ences = [], [], [], []
+        sharpness, sharpness_root, cv = [], [], []
+        reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
-                spearmans=float(line['spearman'])
-                nlls=float(line['nll'])
-                miscalibration_areas=float(line['miscalibration_area'])
-                ences=float(line['ence'])
-                sharpness=float(line['sharpness'])
-                sharpness_root=float(line['sharpness_root'])
-                cv=float(line['cv'])
+                spearmans = float(line['spearman'])
+                nlls = float(line['nll'])
+                miscalibration_areas = float(line['miscalibration_area'])
+                ences = float(line['ence'])
+                sharpness = float(line['sharpness'])
+                sharpness_root = float(line['sharpness_root'])
+                cv = float(line['cv'])
+
+    return spearmans, nlls, miscalibration_areas, ences, \
+        sharpness, sharpness_root, cv
 
 
-    return spearmans,nlls,miscalibration_areas,ences,sharpness,sharpness_root,cv
-
-
-   
-    
-
-def save_evaluations(active_args,spearmans,cv,rmses,rmses2,sharpness,nll,miscalibration_area,ence,sharpness_root):
-    with open(os.path.join(active_args.active_save_dir,"uncertainty_evaluations.csv"), "w", newline="") as f:
+def save_evaluations(
+        active_args, spearmans, cv, rmses, rmses2, sharpness,
+        nll, miscalibration_area, ence, sharpness_root
+):
+    with open(os.path.join(
+        active_args.active_save_dir,
+        "uncertainty_evaluations.csv"
+    ), "w", newline="") as f:
         writer = csv.writer(f)
-        header = ["data_points","spearman","cv","sharpness","sharpness_root","rmse","rmse2","nll","miscalibration_area","ence"]
+        header = [
+            "data_points", "spearman", "cv", "sharpness", "sharpness_root",
+            "rmse", "rmse2", "nll", "miscalibration_area", "ence"
+        ]
         writer.writerow(header)
         for i in range(len(cv)):
-            new_row = [active_args.train_sizes[i],spearmans[i],cv[i],sharpness[i],sharpness_root[i],rmses[i],rmses2[i],nll[i],miscalibration_area[i],ence[i]]
+            new_row = [
+                active_args.train_sizes[i], spearmans[i],
+                cv[i], sharpness[i], sharpness_root[i], rmses[i],
+                rmses2[i], nll[i], miscalibration_area[i], ence[i]
+            ]
             writer.writerow(new_row)
-
-
-
 
 
 if __name__ == '__main__':
     active_learning(ActiveArgs().parse_args())
-
-    
