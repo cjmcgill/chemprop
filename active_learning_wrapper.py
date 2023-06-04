@@ -591,47 +591,88 @@ def update_trainval_split(
     if num_additional > len(previous_remaining_data):
         raise ValueError(f'Increasing trainval size to {new_trainval_size} at iteration {iteration} requires more data than is in the remaining pool, {len(previous_remaining_data)}')
 
-    if active_args.search_function != 'random': # only for a single task
-        priority_values = [d.output[active_args.task_names[0]+f'_unc_{active_args.train_sizes[iteration-1]}'] for d in previous_remaining_data]
+    if active_args.search_function != 'random':  # only for a single task
+        priority_values = [
+            d.output[
+                active_args.task_names[
+                    0
+                ]+f'_unc_{active_args.train_sizes[iteration-1]}'
+            ] for d in previous_remaining_data
+        ]
     elif active_args.search_function == 'random':
         priority_values = [np.random.rand() for d in previous_remaining_data]
-    sorted_remaining_data = [d for _,d in sorted(zip(priority_values,previous_remaining_data),reverse=True,key=lambda x: (x[0],np.random.rand()))]
+    sorted_remaining_data = [d for _, d in sorted(
+        zip(priority_values, previous_remaining_data),
+        reverse=True, key=lambda x: (x[0], np.random.rand()),
+    )]
     new_data = sorted_remaining_data[:num_additional]
     new_data_indices = {d.index for d in new_data}
-
-
-    updated_trainval_data = MoleculeDataset([d for d in previous_trainval_data]+new_data)
-    updated_remaining_data = MoleculeDataset([d for d in previous_remaining_data if d.index not in new_data_indices])
+    updated_trainval_data = MoleculeDataset(
+        [d for d in previous_trainval_data]+new_data
+    )
+    updated_remaining_data = MoleculeDataset(
+        [d for d in previous_remaining_data if d.index not in new_data_indices]
+    )
 
     if save_new_indices:
-        save_dataset_indices(indices = new_data_indices, save_dir = active_args.iter_save_dir, filename_base = 'new_trainval')
+        save_dataset_indices(
+            indices=new_data_indices, save_dir=active_args.iter_save_dir,
+            filename_base='new_trainval'
+        )
     if save_full_indices:
         updated_trainval_indices = {d.index for d in updated_trainval_data}
         updated_remaining_indices = {d.index for d in updated_remaining_data}
-        save_dataset_indices(indices = updated_trainval_indices, save_dir = active_args.iter_save_dir, filename_base = 'updated_trainval')
-        save_dataset_indices(indices = updated_remaining_indices, save_dir = active_args.iter_save_dir, filename_base = 'updated_remaining')
-    
+        save_dataset_indices(
+            indices=updated_trainval_indices,
+            save_dir=active_args.iter_save_dir,
+            filename_base='updated_trainval'
+        )
+        save_dataset_indices(
+            indices=updated_remaining_indices,
+            save_dir=active_args.iter_save_dir,
+            filename_base='updated_remaining'
+        )
     return updated_trainval_data, updated_remaining_data
 
+
 # trainval and remaining, model files, preds
-def cleanup_active_files(active_args:ActiveArgs, train_args:TrainArgs, remove_models:bool = True, remove_datainputs:bool = True, remove_preds:bool = True, remove_indices:bool = False) -> None:
+def cleanup_active_files(
+        active_args: ActiveArgs, train_args: TrainArgs,
+        remove_models: bool = True, remove_datainputs: bool = True,
+        remove_preds: bool = True, remove_indices: bool = False
+) -> None:
     if remove_models:
         for i in range(train_args.num_folds):
-            fold_dir = os.path.join(active_args.iter_save_dir,f'fold_{i}')
-            if os.path.exists(fold_dir): shutil.rmtree(fold_dir)
+            fold_dir = os.path.join(active_args.iter_save_dir, f'fold_{i}')
+            if os.path.exists(fold_dir):
+                shutil.rmtree(fold_dir)
     if remove_datainputs:
         for dataset in ('trainval', 'remaining', 'test'):
             for file_suffix in ('_full.csv', '_smiles.csv', '_features.csv'):
-                path = os.path.join(active_args.iter_save_dir, dataset+file_suffix)
-                if os.path.exists(path): os.remove(path)
+                path = os.path.join(
+                    active_args.iter_save_dir, dataset+file_suffix
+                )
+                if os.path.exists(path):
+                    os.remove(path)
     if remove_preds:
-        for file in ('whole_preds.csv', 'verbose.log', 'quiet.log', 'args.json', 'test_scores.csv'):
-            path = os.path.join(active_args.iter_save_dir,file)
-            if os.path.exists(path): os.remove(path)
+        for file in (
+            'whole_preds.csv',
+            'verbose.log',
+            'quiet.log',
+            'args.json', 'test_scores.csv'
+        ):
+            path = os.path.join(active_args.iter_save_dir, file)
+            if os.path.exists(path):
+                os.remove(path)
     if remove_indices:
-        for file in ('new_trainval_indices.pckl', 'updated_remaining_indices.pckl', 'updated_trainval_indices.pckl'):
-            path = os.path.join(active_args.iter_save_dir,file)
-            if os.path.exists(path): os.remove(path)
+        for file in (
+            'new_trainval_indices.pckl',
+            'updated_remaining_indices.pckl',
+            'updated_trainval_indices.pckl'
+        ):
+            path = os.path.join(active_args.iter_save_dir, file)
+            if os.path.exists(path):
+                os.remove(path)
 
 
 def cleanup_active_files2(
