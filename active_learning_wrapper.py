@@ -487,63 +487,92 @@ def run_predictions(active_args:ActiveArgs, train_args:TrainArgs) -> None:
         raise ValueError(f'The search function {active_args.search_function} is not supported.')
     pred_args = PredictArgs().parse_args(argument_input)
     make_predictions(pred_args)
-    
 
 
-def run_predictions2(active_args:ActiveArgs, train_args:TrainArgs) -> None:
-    argument_input=[
-        '--test_path', os.path.join(active_args.active_save_dir,'whole_smiles.csv'),
-        '--checkpoint_dir', active_args.iter_save_dir2,
-        '--preds_path', os.path.join(active_args.iter_save_dir2,'whole_preds.csv'),
+def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+    argument_input = [
+        '--test_path',
+        os.path.join(active_args.active_save_dir, 'whole_smiles.csv'),
+        '--checkpoint_dir', active_args.iter_save_dir2, '--preds_path',
+        os.path.join(active_args.iter_save_dir2, 'whole_preds.csv'),
     ]
     if active_args.features_path is not None:
-        argument_input.extend(['--features_path',os.path.join(active_args.active_save_dir,'whole_features2.csv')])
-    if isinstance(train_args.gpu,int):
+        argument_input.extend(['--features_path', os.path.join(
+            active_args.active_save_dir, 'whole_features2.csv'
+        )])
+    if isinstance(train_args.gpu, int):
         argument_input.extend(['--gpu', train_args.gpu])
     if active_args.search_function2 == 'ensemble':
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
-       
     pred_args2 = PredictArgs().parse_args(argument_input)
     make_predictions(pred_args2)
 
 
-
-
-def get_pred_results(active_args:ActiveArgs, whole_data:MoleculeDataset, iteration:int, save_error=False) -> None:
-    with open(os.path.join(active_args.iter_save_dir,'whole_preds.csv'),'r') as f:
+def get_pred_results(
+        active_args: ActiveArgs, whole_data: MoleculeDataset,
+        iteration: int, save_error=False
+) -> None:
+    with open(os.path.join(
+        active_args.iter_save_dir, 'whole_preds.csv'
+    ), 'r') as f:
         reader = csv.DictReader(f)
-        for i,line in enumerate(tqdm(reader)):
+        for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
-                whole_data[i].output[j+f'_{active_args.train_sizes[iteration]}'] = float(line[j])#exp_#
+                whole_data[i].output[
+                    j+f'_{active_args.train_sizes[iteration]}'
+                ] = float(line[j])  # exp_#
                 if active_args.search_function == 'ensemble':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_ensemble_uncal_var'])#exp_unc_#
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_ensemble_uncal_var'])  # exp_unc_#
                 elif active_args.search_function == 'mve':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_mve_uncal_var'])
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_mve_uncal_var'])
                 elif active_args.search_function == 'mve_ensemble':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_mve_uncal_var'])
-                elif active_args.search_function =='evidential_total' or active_args.search_function == 'evidential':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_evidential_total_uncal_var']) 
-                elif active_args.search_function =='evidential_aleatoric':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_evidential_aleatoric_var'])
-                elif active_args.search_function =='evidential_epistemic':
-                    whole_data[i].output[j+f'_unc_{active_args.train_sizes[iteration]}'] = float(line[j+'_evidential_epistemic_var'])
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_mve_uncal_var'])
+                elif active_args.search_function == 'evidential_total' or \
+                        active_args.search_function == 'evidential':
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_evidential_total_uncal_var'])
+                elif active_args.search_function == 'evidential_aleatoric':
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_evidential_aleatoric_var'])
+                elif active_args.search_function == 'evidential_epistemic':
+                    whole_data[i].output[
+                        j+f'_unc_{active_args.train_sizes[iteration]}'
+                    ] = float(line[j+'_evidential_epistemic_var'])
                 if save_error:
-                    whole_data[i].output[j+f'_error_{active_args.train_sizes[iteration]}'] = abs(float(line[j]) - whole_data[i].output[j])
+                    whole_data[i].output[
+                        j+f'_error_{active_args.train_sizes[iteration]}'
+                    ] = abs(float(line[j]) - whole_data[i].output[j])
 
 
-def get_pred_results2(active_args:ActiveArgs, whole_data:MoleculeDataset, iteration:int, save_error=False) -> None:
-    with open(os.path.join(active_args.iter_save_dir2,'whole_preds.csv'),'r') as f:
+def get_pred_results2(
+        active_args: ActiveArgs, whole_data: MoleculeDataset, iteration: int,
+        save_error=False
+) -> None:
+    with open(os.path.join(
+        active_args.iter_save_dir2, 'whole_preds.csv'
+    ), 'r') as f:
         reader = csv.DictReader(f)
-        for i,line in enumerate(tqdm(reader)):
+        for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
-                whole_data[i].output[j+f'_{active_args.train_sizes[iteration]}'] = float(line[j])#exp_#
-               
+                whole_data[i].output[
+                    j+f'_{active_args.train_sizes[iteration]}'
+                ] = float(line[j])  # exp_#
 
 
-
-
-
-def save_results(active_args:ActiveArgs, test_data:MoleculeDataset, nontest_data:MoleculeDataset, whole_data:MoleculeDataset, iteration:int, save_whole_results:bool=False, save_error=False) -> None:
+def save_results(
+        active_args: ActiveArgs, test_data: MoleculeDataset,
+        nontest_data: MoleculeDataset, whole_data: MoleculeDataset,
+        iteration: int, save_whole_results: bool = False,
+        save_error=False
+) -> None:
     fieldnames = []
     fieldnames.extend(active_args.smiles_columns)
     fieldnames.extend(active_args.task_names)
@@ -557,20 +586,33 @@ def save_results(active_args:ActiveArgs, test_data:MoleculeDataset, nontest_data
     if active_args.search_function != 'random':
         for i in range(iteration+1):
             for j in active_args.task_names:
-                fieldnames.append(j+f'_unc_{active_args.train_sizes[i]}')        
-    with open(os.path.join(active_args.active_save_dir,'test_results.csv'),'w') as f:
-        writer=csv.DictWriter(f,fieldnames=fieldnames,extrasaction='ignore')
+                fieldnames.append(j+f'_unc_{active_args.train_sizes[i]}')
+    with open(os.path.join(
+        active_args.active_save_dir, 'test_results.csv'
+    ), 'w') as f:
+        writer = csv.DictWriter(
+            f, fieldnames=fieldnames, extrasaction='ignore'
+        )
         writer.writeheader()
         for d in test_data:
             writer.writerow(d.output)
-    with open(os.path.join(active_args.active_save_dir,'nontest_results.csv'),'w') as f:
-        writer=csv.DictWriter(f,fieldnames=fieldnames,extrasaction='ignore')
+    with open(os.path.join(
+        active_args.active_save_dir, 'nontest_results.csv'
+    ), 'w') as f:
+        writer = csv.DictWriter(
+            f, fieldnames=fieldnames, extrasaction='ignore'
+        )
         writer.writeheader()
         for d in nontest_data:
             writer.writerow(d.output)
     if save_whole_results:
-        with open(os.path.join(active_args.active_save_dir,'whole_results.csv'),'w') as f:
-            writer=csv.DictWriter(f,fieldnames=fieldnames,extrasaction='ignore')
+        with open(os.path.join(
+            active_args.active_save_dir,
+            'whole_results.csv'
+        ), 'w') as f:
+            writer = csv.DictWriter(
+                f, fieldnames=fieldnames, extrasaction='ignore',
+            )
             writer.writeheader()
             for d in whole_data:
                 writer.writerow(d.output)
