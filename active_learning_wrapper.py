@@ -574,23 +574,30 @@ def save_results(active_args:ActiveArgs, test_data:MoleculeDataset, nontest_data
             writer.writeheader()
             for d in whole_data:
                 writer.writerow(d.output)
-    
+
 
 def update_trainval_split(
-    new_trainval_size: int, 
+    new_trainval_size: int,
     iteration: int,
     active_args: ActiveArgs,
-    previous_trainval_data: MoleculeDataset, 
-    previous_remaining_data: MoleculeDataset, 
-    save_new_indices:bool = True,
-    save_full_indices:bool = False) -> Tuple[MoleculeDataset]:
-    
+    previous_trainval_data: MoleculeDataset,
+    previous_remaining_data: MoleculeDataset,
+    save_new_indices: bool = True,
+    save_full_indices: bool = False
+) -> Tuple[MoleculeDataset]:
     num_additional = new_trainval_size - len(previous_trainval_data)
     if num_additional <= 0:
-        raise ValueError(f'Previous trainval size is larger than the next trainval size at iteration {iteration}')
+        raise ValueError(
+            'Previous trainval size is larger than the next ' +
+            f'trainval size at iteration {iteration}'
+        )
     if num_additional > len(previous_remaining_data):
-        raise ValueError(f'Increasing trainval size to {new_trainval_size} at iteration {iteration} requires more data than is in the remaining pool, {len(previous_remaining_data)}')
-
+        raise ValueError(
+            'Increasing trainval size to ' +
+            f'{new_trainval_size} at iteration {iteration} ' +
+            'requires more data than is in the remaining pool, ' +
+            f'{len(previous_remaining_data)}'
+        )
     if active_args.search_function != 'random':  # only for a single task
         priority_values = [
             d.output[
