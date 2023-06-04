@@ -634,60 +634,80 @@ def cleanup_active_files(active_args:ActiveArgs, train_args:TrainArgs, remove_mo
             if os.path.exists(path): os.remove(path)
 
 
-def cleanup_active_files2(active_args:ActiveArgs, train_args2:TrainArgs, remove_models:bool = True, remove_datainputs:bool = True, remove_preds:bool = True, remove_indices:bool = False) -> None:
+def cleanup_active_files2(
+        active_args: ActiveArgs, train_args2: TrainArgs,
+        remove_models: bool = True,
+        remove_datainputs: bool = True, remove_preds: bool = True,
+        remove_indices: bool = False,
+) -> None:
     if remove_models:
         for i in range(train_args2.num_folds):
-            fold_dir = os.path.join(active_args.iter_save_dir2,f'fold_{i}')
-            if os.path.exists(fold_dir): shutil.rmtree(fold_dir)
+            fold_dir = os.path.join(active_args.iter_save_dir2, f'fold_{i}')
+            if os.path.exists(fold_dir):
+                shutil.rmtree(fold_dir)
     if remove_datainputs:
         for dataset in ('trainval', 'remaining', 'test'):
             for file_suffix in ('_full.csv', '_smiles.csv', '_features.csv'):
-                path = os.path.join(active_args.iter_save_dir2, dataset+file_suffix)
-                if os.path.exists(path): os.remove(path)
+                path = os.path.join(
+                    active_args.iter_save_dir2, dataset+file_suffix,
+                )
+                if os.path.exists(path):
+                    os.remove(path)
     if remove_preds:
-        for file in ('whole_preds.csv', 'verbose.log', 'quiet.log', 'args.json', 'test_scores.csv'):
-            path = os.path.join(active_args.iter_save_dir2,file)
-            if os.path.exists(path): os.remove(path)
+        for file in (
+            'whole_preds.csv', 'verbose.log', 'quiet.log',
+            'args.json', 'test_scores.csv',
+        ):
+            path = os.path.join(active_args.iter_save_dir2, file)
+            if os.path.exists(path):
+                os.remove(path)
     if remove_indices:
-        for file in ('new_trainval_indices.pckl', 'updated_remaining_indices.pckl', 'updated_trainval_indices.pckl'):
-            path = os.path.join(active_args.iter_save_dir2,file)
-            if os.path.exists(path): os.remove(path)
-
-
-
-
-
-
-
-
-
-
-
+        for file in (
+            'new_trainval_indices.pckl',
+            'updated_remaining_indices.pckl',
+            'updated_trainval_indices.pckl',
+        ):
+            path = os.path.join(active_args.iter_save_dir2, file)
+            if os.path.exists(path):
+                os.remove(path)
 
 
 def get_rmse(active_args):
-     with open(os.path.join(active_args.iter_save_dir, 'test_scores.csv'), 'r') as f:
-        reader = csv.DictReader(f) 
+    with open(os.path.join(
+        active_args.iter_save_dir,
+        'test_scores.csv'
+    ), 'r') as f:
+        reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
                 rmse = float(line['Mean rmse'])
-     return rmse
+    return rmse
+
 
 def get_rmse2(active_args):
-     with open(os.path.join(active_args.iter_save_dir2, 'test_scores.csv'), 'r') as f:
-        reader = csv.DictReader(f) 
+    with open(os.path.join(
+        active_args.iter_save_dir2,
+        'test_scores.csv'
+    ), 'r') as f:
+        reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
-                rmse2=float(line['Mean rmse'])
-     return rmse2
+                rmse2 = float(line['Mean rmse'])
+        return rmse2
+
 
 def get_evaluation_scores(active_args):
-    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'r') as file:
-        
+    with open(os.path.join(
+        active_args.iter_save_dir,
+        'evaluation_scores.csv'
+    ), 'r') as file:
         csv_reader = csv.reader(file)
         rows = list(csv_reader)
         transposed_rows = list(zip(*rows))
-    with open(os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'), 'w', newline='') as file:
+    with open(os.path.join(
+        active_args.iter_save_dir,
+        'evaluation_scores.csv'
+    ), 'w', newline='') as file:
         csv_writer = csv.writer(file)
         csv_writer.writerows(transposed_rows)
 
