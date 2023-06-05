@@ -40,7 +40,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     search_function2: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
                               'evidential', 'evidential_epistemic',
                               'evidential_aleatoric', 'evidential_total',
-                              ] = 'ensemble'
+                              ] = 'ensemble'  # which function to use
+    # for comparison model
     test_fraction: float = 0.1  # This is the fraction of data used for test
     # if a separate test set is not provided.
     initial_trainval_fraction: float = None
@@ -100,6 +101,12 @@ def active_learning(active_args: ActiveArgs):
         )
         makedirs(active_args.iter_save_dir)
         makedirs(active_args.iter_save_dir2)
+        """
+        creates a folder by name of "train + number of data points"
+        and inside that folder there are 2 folders
+        one for pure model ("pure + number of data points")
+        another one for comparison model ("comparison + number of data points")
+        """
         if i != 0:
             trainval_data, remaining_data = update_trainval_split(
                 new_trainval_size=active_args.train_sizes[i],
@@ -484,6 +491,7 @@ def save_dataset_indices(
         pickle.dump(indices, f)
 
 
+# train args that will use to train the pure model
 def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     train_args.save_dir = active_args.iter_save_dir
     train_args.data_path = os.path.join(
@@ -501,6 +509,7 @@ def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
         )]
 
 
+# train args that will use to train the comparison model
 def update_train_args2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     train_args.save_dir = active_args.iter_save_dir2
     train_args.data_path = os.path.join(
@@ -536,6 +545,7 @@ def save_datainputs(
     )
 
 
+# run predictions for pure model
 def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     argument_input = [
         '--test_path',
@@ -577,6 +587,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     make_predictions(pred_args)
 
 
+# run predictions for comparison model
 def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     argument_input = [
         '--test_path',
@@ -596,6 +607,7 @@ def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     make_predictions(pred_args2)
 
 
+# extract predicted results by pure model
 def get_pred_results(
         active_args: ActiveArgs, whole_data: MoleculeDataset,
         iteration: int, save_error=False
@@ -640,6 +652,7 @@ def get_pred_results(
                     ] = abs(float(line[j]) - whole_data[i].output[j])
 
 
+# extract predicted results by comparison model
 def get_pred_results2(
         active_args: ActiveArgs, whole_data: MoleculeDataset, iteration: int,
         save_error=False
@@ -812,6 +825,7 @@ def cleanup_active_files(
                 os.remove(path)
 
 
+# clean unnecessary files of comparison model
 def cleanup_active_files2(
         active_args: ActiveArgs, train_args2: TrainArgs,
         remove_models: bool = True,
@@ -850,6 +864,7 @@ def cleanup_active_files2(
                 os.remove(path)
 
 
+# extract rmse of pure model
 def get_rmse(active_args):
     with open(os.path.join(
         active_args.iter_save_dir,
@@ -862,6 +877,7 @@ def get_rmse(active_args):
     return rmse
 
 
+# extract rmse of comparison model
 def get_rmse2(active_args):
     with open(os.path.join(
         active_args.iter_save_dir2,
@@ -874,6 +890,7 @@ def get_rmse2(active_args):
         return rmse2
 
 
+# extract calculated evaluation scores by chemprop
 def get_evaluation_scores(active_args):
     with open(os.path.join(
         active_args.iter_save_dir,
@@ -910,6 +927,7 @@ def get_evaluation_scores(active_args):
         sharpness, sharpness_root, cv
 
 
+# save uncertainty evaluations in one file
 def save_evaluations(
         active_args, spearmans, cv, rmses, rmses2, sharpness,
         nll, miscalibration_area, ence, sharpness_root
