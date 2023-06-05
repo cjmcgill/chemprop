@@ -9,7 +9,6 @@ from typing_extensions import Literal
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
-
 from chemprop.args import TrainArgs, PredictArgs
 from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
 from chemprop.train import cross_validate, run_training
@@ -35,13 +34,24 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     search_function: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
                              'evidential', 'evidential_epistemic',
                              'evidential_aleatoric', 'evidential_total',
-                             ] = 'random'  # which function to use for
-    # choosing what molecules to add to trainval from the pool
+                             ] = 'random'
+    """
+    which function to use for choosing what molecules to add
+    to trainval from the pool it will run a random data selection
+    if search_function is not specified.
+    note that for "ensemble" search_function 'ensemble_size <n>'
+    is needed in config.json file
+    """
     search_function2: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
                               'evidential', 'evidential_epistemic',
                               'evidential_aleatoric', 'evidential_total',
-                              ] = 'ensemble'  # which function to use
-    # for comparison model
+                              ] = 'ensemble'
+    """
+    which function to use for comparison model.
+    it will do anensemble model if search_function is not specifie.
+    note that for ensemble search_function2 'ensemble_size <n>'
+    is needed in config2.json file
+    """
     test_fraction: float = 0.1  # This is the fraction of data used for test
     # if a separate test set is not provided.
     initial_trainval_fraction: float = None
