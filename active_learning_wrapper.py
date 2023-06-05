@@ -20,7 +20,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
     train_config_path: str  # path to a json containing all the arguments
     # usually included in a training submission, except for path arguments
-    train_config_path2: str  # path to a json containing all the arguments
+    train_config_path2: str = None  # path to a json containing all the arguments
     # usually included in a training submission to train the comparison model
     data_path: str  # dataset path
     features_path: List[str] = None
@@ -31,6 +31,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     # list of indices for the test set out of the whole data path
     initial_trainval_indices_path: str = None  # path to pickle file containing
     # a list of indices for data in data path
+    gpu: int = None  # which gpu to use
+    no_comparison_model: bool = False  # if True, will not train a comparison
     search_function: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
                              'evidential', 'evidential_epistemic',
                              'evidential_aleatoric', 'evidential_total',
@@ -67,11 +69,12 @@ def active_learning(active_args: ActiveArgs):
         data_path=active_args.data_path,
         search_function=active_args.search_function,
     )
-    train_args2 = get_initial_train_args(
-        train_config_path=active_args.train_config_path2,
-        data_path=active_args.data_path,
-        search_function=active_args.search_function2,
-    )
+    if not active_args.no_comparison_model:
+        train_args2 = get_initial_train_args(
+            train_config_path=active_args.train_config_path2,
+            data_path=active_args.data_path,
+            search_function=active_args.search_function2,
+        )
     active_args.split_type = train_args.split_type
     active_args.task_names = train_args.task_names
     active_args.smiles_columns = train_args.smiles_columns
@@ -98,23 +101,25 @@ def active_learning(active_args: ActiveArgs):
         active_args.iter_save_dir = os.path.join(
             active_args.active_save_dir,
             f'train{active_args.train_sizes[i]}',
-            f'pure{active_args.train_sizes[i]}',
+            f'selection{active_args.train_sizes[i]}',
         )
-        active_args.iter_save_dir2 = os.path.join(
-            active_args.active_save_dir,
-            f'train{active_args.train_sizes[i]}',
-            f'comparison{active_args.train_sizes[i]}',
-        )
+        if not active_args.no_comparison_model:
+            active_args.iter_save_dir2 = os.path.join(
+                active_args.active_save_dir,
+                f'train{active_args.train_sizes[i]}',
+                f'comparison{active_args.train_sizes[i]}',
+            )
         active_args.run_save_dir = os.path.join(
             active_args.active_save_dir,
             f'train{active_args.train_sizes[i]}',
         )
         makedirs(active_args.iter_save_dir)
-        makedirs(active_args.iter_save_dir2)
+        if not active_args.no_comparison_model:
+            makedirs(active_args.iter_save_dir2)
         """
         creates a folder by name of "train + number of data points"
         and inside that folder there are 2 folders
-        one for pure model ("pure + number of data points")
+        one for selection model ("selection + number of data points")
         another one for comparison model ("comparison + number of data points")
         """
         if i != 0:
@@ -134,22 +139,26 @@ def active_learning(active_args: ActiveArgs):
             test_data=test_data,
         )
         update_train_args(active_args=active_args, train_args=train_args)
-        update_train_args2(active_args=active_args, train_args=train_args2)
+        if not active_args.no_comparison_model:
+            update_train_args2(active_args=active_args, train_args=train_args2)
         cross_validate(args=train_args, train_func=run_training)
-        cross_validate(args=train_args2, train_func=run_training)
+        if not active_args.no_comparison_model:
+            cross_validate(args=train_args2, train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args)
-        run_predictions2(active_args=active_args, train_args=train_args2)
+        if not active_args.no_comparison_model:
+            run_predictions2(active_args=active_args, train_args=train_args2)
         get_pred_results(
             active_args=active_args,
             whole_data=whole_data,
             iteration=i,
             save_error=True,
         )
-        get_pred_results2(
-            active_args=active_args,
-            whole_data=whole_data,
-            iteration=i,
-        )
+        if not active_args.no_comparison_model:
+            get_pred_results2(
+                active_args=active_args,
+                whole_data=whole_data,
+                iteration=i,
+            )
         save_results(
             active_args=active_args,
             test_data=test_data,
@@ -160,7 +169,10 @@ def active_learning(active_args: ActiveArgs):
             save_error=True,
         )
         rmses.append(get_rmse(active_args=active_args))
-        rmses2.append(get_rmse2(active_args=active_args))
+        if not active_args.no_comparison_model:
+            rmses2.append(get_rmse2(active_args=active_args))
+        else:
+            rmses2.append(None)
         spearman1, nll1, miscalibration_area1, ence1, sharpness1, \
             shar_root1, cv1 = get_evaluation_scores(active_args=active_args)
         spearman.append(spearman1)
@@ -190,14 +202,15 @@ def active_learning(active_args: ActiveArgs):
             remove_preds=False,
             remove_indices=False,
         )
-        cleanup_active_files2(
-            active_args=active_args,
-            train_args2=train_args2,
-            remove_models=True,
-            remove_datainputs=True,
-            remove_preds=False,
-            remove_indices=False,
-        )
+        if not active_args.no_comparison_model:
+            cleanup_active_files2(
+                active_args=active_args,
+                train_args2=train_args2,
+                remove_models=True,
+                remove_datainputs=True,
+                remove_preds=False,
+                remove_indices=False,
+            )
 
 
 # extract config settings from config json file
@@ -501,7 +514,7 @@ def save_dataset_indices(
         pickle.dump(indices, f)
 
 
-# train args that will use to train the pure model
+# train args that will use to train the selection model
 def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     train_args.save_dir = active_args.iter_save_dir
     train_args.data_path = os.path.join(
@@ -555,7 +568,7 @@ def save_datainputs(
     )
 
 
-# run predictions for pure model
+# run predictions for selection model
 def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     argument_input = [
         '--test_path',
@@ -617,7 +630,7 @@ def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     make_predictions(pred_args2)
 
 
-# extract predicted results by pure model
+# extract predicted results by selection model
 def get_pred_results(
         active_args: ActiveArgs, whole_data: MoleculeDataset,
         iteration: int, save_error=False
@@ -874,7 +887,7 @@ def cleanup_active_files2(
                 os.remove(path)
 
 
-# extract rmse of pure model
+# extract rmse of selection model
 def get_rmse(active_args):
     with open(os.path.join(
         active_args.iter_save_dir,
