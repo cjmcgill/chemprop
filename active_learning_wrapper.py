@@ -322,24 +322,39 @@ def get_test_split(
     return whole_data, nontest_data, test_data
 
 
-def save_dataset(data: MoleculeDataset, save_dir: str, filename_base: str, active_args: ActiveArgs) -> None:
-    save_smiles(data=data, save_dir=save_dir, filename_base=filename_base, active_args=active_args)
-    with open(os.path.join(save_dir, f'{filename_base}_full.csv'), 'w',newline="") as f:
+def save_dataset(
+        data: MoleculeDataset, save_dir: str, filename_base: str,
+        active_args: ActiveArgs
+) -> None:
+    save_smiles(
+        data=data, save_dir=save_dir, filename_base=filename_base,
+        active_args=active_args
+    )
+    with open(os.path.join(
+        save_dir, f'{filename_base}_full.csv'
+    ), 'w', newline="") as f:
         writer = csv.writer(f)
         writer.writerow(active_args.smiles_columns + active_args.task_names)
         dataset_targets = data.targets()
         for i, smiles in enumerate(data.smiles()):
             writer.writerow(smiles + dataset_targets[i])
     if active_args.features_path is not None:
-        with open(os.path.join(save_dir, f'{filename_base}_features.csv'), 'w',newline="") as f:
+        with open(os.path.join(
+            save_dir, f'{filename_base}_features.csv'
+        ), 'w', newline="") as f:
             writer = csv.writer(f)
             writer.writerow(active_args.feature_names)
             for d in data:
                 writer.writerow(d.features)
 
 
-def save_smiles(data: MoleculeDataset, save_dir: str, filename_base: str, active_args: ActiveArgs) -> None:
-    with open(os.path.join(save_dir, f'{filename_base}_smiles.csv'), 'w',newline="") as f:
+def save_smiles(
+        data: MoleculeDataset, save_dir: str,
+        filename_base: str, active_args: ActiveArgs
+) -> None:
+    with open(os.path.join(
+        save_dir, f'{filename_base}_smiles.csv'
+    ), 'w', newline="") as f:
         writer = csv.writer(f)
         if active_args.smiles_columns[0] == '':
             writer.writerow(['smiles'])
@@ -348,53 +363,90 @@ def save_smiles(data: MoleculeDataset, save_dir: str, filename_base: str, active
         writer.writerows(data.smiles())
 
 
-def initial_trainval_split(active_args: ActiveArgs, nontest_data: MoleculeDataset, whole_data: MoleculeDataset, save_data: bool = False, save_indices: bool = False) -> Tuple[MoleculeDataset]:
+def initial_trainval_split(
+        active_args: ActiveArgs, nontest_data: MoleculeDataset,
+        whole_data: MoleculeDataset, save_data: bool = False,
+        save_indices: bool = False
+) -> Tuple[MoleculeDataset]:
 
-    num_data=len(whole_data)
-    num_nontest=len(nontest_data)
+    num_data = len(whole_data)
+    num_nontest = len(nontest_data)
 
-    if active_args.active_batch_size is None: #default: 10 steps
+    if active_args.active_batch_size is None:  # default: 10 steps
         active_args.active_batch_size = num_nontest//10
-    if active_args.initial_trainval_fraction is None and active_args.initial_trainval_indices_path is None:
-        active_args.initial_trainval_fraction = active_args.active_batch_size/num_data
+    if active_args.initial_trainval_fraction is None and \
+            active_args.initial_trainval_indices_path is None:
+        active_args.initial_trainval_fraction = \
+            active_args.active_batch_size / num_data
 
     if active_args.initial_trainval_indices_path is not None:
         with open(active_args.initial_trainval_indices_path, 'rb') as f:
             trainval_indices = pickle.load(f)
         active_args.initial_trainval_fraction = len(trainval_indices)/num_data
-        trainval_data = MoleculeDataset([whole_data[i] for i in trainval_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_indices])
+        trainval_data = MoleculeDataset(
+            [whole_data[i] for i in trainval_indices]
+        )
+        remaining_data = MoleculeDataset(
+            [d for d in nontest_data if d.index not in trainval_indices]
+        )
         remaining_indices = {d.index for d in remaining_data}
         if save_indices:
-            save_dataset_indices(indices=trainval_indices, save_dir=active_args.active_save_dir, filename_base='initial_trainval')
-            save_dataset_indices(indices=remaining_indices, save_dir=active_args.active_save_dir, filename_base='initial_remaining')
+            save_dataset_indices(
+                indices=trainval_indices, save_dir=active_args.active_save_dir,
+                filename_base='initial_trainval'
+            )
+            save_dataset_indices(
+                indices=remaining_indices,
+                save_dir=active_args.active_save_dir,
+                filename_base='initial_remaining'
+            )
 
     else:
-        fraction_trainval = active_args.initial_trainval_fraction*num_data/num_nontest
+        fraction_trainval = active_args.initial_trainval_fraction * \
+            num_data/num_nontest
         sizes = (fraction_trainval, 1 - fraction_trainval, 0)
-        trainval_data, remaining_data, _ = split_data(data=nontest_data, split_type=active_args.split_type, sizes=sizes)
+        trainval_data, remaining_data, _ = split_data(
+            data=nontest_data, split_type=active_args.split_type, sizes=sizes
+        )
         if save_indices:
             trainval_indices = {d.index for d in trainval_data}
             remaining_indices = {d.index for d in remaining_data}
-            save_dataset_indices(indices=trainval_indices, save_dir=active_args.active_save_dir, filename_base='initial_trainval')
-            save_dataset_indices(indices=remaining_indices, save_dir=active_args.active_save_dir, filename_base='initial_remaining')
+            save_dataset_indices(
+                indices=trainval_indices, save_dir=active_args.active_save_dir,
+                filename_base='initial_trainval'
+            )
+            save_dataset_indices(
+                indices=remaining_indices,
+                save_dir=active_args.active_save_dir,
+                filename_base='initial_remaining'
+            )
 
-    active_args.train_sizes = list(range(len(trainval_data),num_nontest+1,active_args.active_batch_size))
+    active_args.train_sizes = list(range(
+        len(trainval_data), num_nontest+1, active_args.active_batch_size
+    ))
     if active_args.train_sizes[-1] != num_nontest:
         active_args.train_sizes.append(num_nontest)
     if active_args.active_iterations_limit is not None:
         assert active_args.active_iterations_limit > 1
-        if active_args.active_iterations_limit<len(active_args.train_sizes):
-            active_args.train_sizes = active_args.train_sizes[:active_args.active_iterations_limit]
+        if active_args.active_iterations_limit < len(active_args.train_sizes):
+            active_args.train_sizes = active_args.train_sizes[
+                :active_args.active_iterations_limit
+            ]
 
     if save_data:
-        save_dataset(data=trainval_data, save_dir=active_args.active_save_dir, filename_base='initial_trainval', active_args=active_args)
-        save_dataset(data=remaining_data, save_dir=active_args.active_save_dir, filename_base='initial_remaining', active_args=active_args)
+        save_dataset(
+            data=trainval_data, save_dir=active_args.active_save_dir,
+            filename_base='initial_trainval', active_args=active_args
+        )
+        save_dataset(
+            data=remaining_data, save_dir=active_args.active_save_dir,
+            filename_base='initial_remaining', active_args=active_args
+        )
 
     return trainval_data, remaining_data
 
 
-def get_feature_names(active_args:ActiveArgs) -> List[str]:
+def get_feature_names(active_args: ActiveArgs) -> List[str]:
     if active_args.features_path is not None:
         features_header = []
         for feat_path in active_args.features_path:
@@ -407,84 +459,120 @@ def get_feature_names(active_args:ActiveArgs) -> List[str]:
         return None
 
 
-def get_indices(whole_data:MoleculeDataset, subset:MoleculeDataset) -> Set[int]: 
+def get_indices(
+        whole_data: MoleculeDataset, subset: MoleculeDataset
+) -> Set[int]:
     subset_hashes = set()
     subset_indices = set()
     for d in subset:
-        subset_hashes.add((tuple(d.smiles),tuple(d.targets),tuple(d.features))) # smiles, targets, features
-    for index,d in enumerate(tqdm(whole_data)):
-        hash = (tuple(d.smiles),tuple(d.targets),tuple(d.features))
+        subset_hashes.add(
+            (tuple(d.smiles), tuple(d.targets), tuple(d.features))
+        )  # smiles, targets, features
+    for index, d in enumerate(tqdm(whole_data)):
+        hash = (tuple(d.smiles), tuple(d.targets), tuple(d.features))
         if hash in subset_hashes:
             subset_indices.add(index)
     return subset_indices
 
 
-def save_dataset_indices(indices: Set[int], save_dir: str, filename_base: str) -> None:
-    with open(os.path.join(save_dir, f'{filename_base}_indices.pckl'), 'wb') as f:
+def save_dataset_indices(
+        indices: Set[int], save_dir: str, filename_base: str
+) -> None:
+    with open(os.path.join(
+        save_dir, f'{filename_base}_indices.pckl'
+    ), 'wb') as f:
         pickle.dump(indices, f)
 
 
-def update_train_args(active_args:ActiveArgs, train_args:TrainArgs) -> None:
+def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     train_args.save_dir = active_args.iter_save_dir
-    train_args.data_path = os.path.join(active_args.run_save_dir,'trainval_full.csv')
-    train_args.separate_test_path = os.path.join(active_args.run_save_dir,'test_full.csv')
+    train_args.data_path = os.path.join(
+        active_args.run_save_dir, 'trainval_full.csv'
+    )
+    train_args.separate_test_path = os.path.join(
+        active_args.run_save_dir, 'test_full.csv'
+    )
     if active_args.features_path is not None:
-        train_args.features_path = [os.path.join(active_args.run_save_dir,'trainval_features.csv')]
-        train_args.separate_test_features_path = [os.path.join(active_args.run_save_dir,'test_features.csv')]
+        train_args.features_path = [os.path.join(
+            active_args.run_save_dir, 'trainval_features.csv'
+        )]
+        train_args.separate_test_features_path = [os.path.join(
+            active_args.run_save_dir, 'test_features.csv'
+        )]
 
-def update_train_args2(active_args:ActiveArgs,train_args:TrainArgs) ->None:
-    train_args.save_dir=active_args.iter_save_dir2
-    train_args.data_path = os.path.join(active_args.run_save_dir,'trainval_full.csv')
-    train_args.separate_test_path = os.path.join(active_args.run_save_dir,'test_full.csv')
+
+def update_train_args2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+    train_args.save_dir = active_args.iter_save_dir2
+    train_args.data_path = os.path.join(
+        active_args.run_save_dir, 'trainval_full.csv'
+    )
+    train_args.separate_test_path = os.path.join(
+        active_args.run_save_dir, 'test_full.csv'
+    )
     if active_args.features_path is not None:
-        train_args.features_path = [os.path.join(active_args.run_save_dir,'trainval_features.csv')]
-        train_args.separate_test_features_path = [os.path.join(active_args.run_save_dir2,'test_features.csv')]
+        train_args.features_path = [os.path.join(
+            active_args.run_save_dir, 'trainval_features.csv'
+        )]
+        train_args.separate_test_features_path = [os.path.join(
+            active_args.run_save_dir2, 'test_features.csv'
+        )]
 
 
+def save_datainputs(
+        active_args: ActiveArgs, trainval_data: MoleculeDataset,
+        remaining_data: MoleculeDataset, test_data: MoleculeDataset
+) -> None:
+    save_dataset(
+        data=trainval_data, save_dir=active_args.run_save_dir,
+        filename_base='trainval', active_args=active_args
+    )
+    save_dataset(
+        data=remaining_data, save_dir=active_args.run_save_dir,
+        filename_base='remaining', active_args=active_args
+    )
+    save_dataset(
+        data=test_data, save_dir=active_args.run_save_dir,
+        filename_base='test', active_args=active_args
+    )
 
 
-
-
-
-
-
-def save_datainputs(active_args:ActiveArgs, trainval_data:MoleculeDataset,remaining_data:MoleculeDataset,test_data:MoleculeDataset) -> None:
-    save_dataset(data=trainval_data, save_dir=active_args.run_save_dir, filename_base='trainval', active_args=active_args)
-    save_dataset(data=remaining_data, save_dir=active_args.run_save_dir,filename_base='remaining', active_args=active_args)
-    save_dataset(data=test_data, save_dir=active_args.run_save_dir,filename_base='test', active_args=active_args)
-
-
-
-def run_predictions(active_args:ActiveArgs, train_args:TrainArgs) -> None:
-    
-    argument_input=[
-        '--test_path', os.path.join(active_args.active_save_dir,'whole_full.csv'),
+def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+    argument_input = [
+        '--test_path',
+        os.path.join(active_args.active_save_dir, 'whole_full.csv'),
         '--checkpoint_dir', active_args.iter_save_dir,
-        '--preds_path', os.path.join(active_args.iter_save_dir,'whole_preds.csv'),
-       '--evaluation_scores_path',os.path.join(active_args.iter_save_dir,'evaluation_scores.csv'),
-       '--evaluation_methods','nll','miscalibration_area', 'ence','spearman','sharpness','sharpness_root','cv',
+        '--preds_path',
+        os.path.join(active_args.iter_save_dir, 'whole_preds.csv'),
+        '--evaluation_scores_path',
+        os.path.join(active_args.iter_save_dir, 'evaluation_scores.csv'),
+        '--evaluation_methods', 'nll', 'miscalibration_area', 'ence',
+        'spearman', 'sharpness', 'sharpness_root', 'cv',
     ]
     if active_args.features_path is not None:
-        argument_input.extend(['--features_path',os.path.join(active_args.active_save_dir,'whole_features.csv')])
-    if isinstance(train_args.gpu,int):
+        argument_input.extend(['--features_path', os.path.join(
+            active_args.active_save_dir, 'whole_features.csv'
+        )])
+    if isinstance(train_args.gpu, int):
         argument_input.extend(['--gpu', train_args.gpu])
     if active_args.search_function == 'ensemble':
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
-        argument_input.extend(['--uncertainty_method','ensemble'])
+        argument_input.extend(['--uncertainty_method', 'ensemble'])
     elif active_args.search_function == 'mve':
-        argument_input.extend(['--uncertainty_method','mve'])
+        argument_input.extend(['--uncertainty_method', 'mve'])
     elif active_args.search_function == 'mve_ensemble':
         argument_input.extend(['--uncertainty_method', 'mve'])
-    elif active_args.search_function =='evidential_total' or active_args.search_function == 'evidential':
-        argument_input.extend(['--uncertainty_method','evidential_total'])
-    elif active_args.search_function =='evidential_aleatoric':
-        argument_input.extend(['--uncertainty_method','evidential_aleatoric'])
-    elif active_args.search_function =='evidential_epistemic':
-        argument_input.extend(['--uncertainty_method','evidential_epistemic'])
+    elif active_args.search_function == 'evidential_total' or \
+            active_args.search_function == 'evidential':
+        argument_input.extend(['--uncertainty_method', 'evidential_total'])
+    elif active_args.search_function == 'evidential_aleatoric':
+        argument_input.extend(['--uncertainty_method', 'evidential_aleatoric'])
+    elif active_args.search_function == 'evidential_epistemic':
+        argument_input.extend(['--uncertainty_method', 'evidential_epistemic'])
     elif active_args.search_function == 'random':
         pass
     else:
-        raise ValueError(f'The search function {active_args.search_function} is not supported.')
+        raise ValueError(f'The search function {active_args.search_function}' +
+                         'is not supported.')
     pred_args = PredictArgs().parse_args(argument_input)
     make_predictions(pred_args)
 
