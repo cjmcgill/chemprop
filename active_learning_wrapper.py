@@ -96,6 +96,8 @@ def active_learning(active_args: ActiveArgs):
     )
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
+    spearman1, nll1, miscalibration_area1, ence1, sharpness1 =[], [], [], [], []
+    shar_root1, cv1 = [], [] 
     print(active_args.train_sizes)
     for i in range(len(active_args.train_sizes)):
         active_args.iter_save_dir = os.path.join(
@@ -937,8 +939,6 @@ def get_evaluation_scores(active_args):
         active_args.iter_save_dir,
         'evaluation_scores.csv'
     ), 'r') as f:
-        spearmans, nlls, miscalibration_areas, ences = [], [], [], []
-        sharpness, sharpness_root, cv = [], [], []
         reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
