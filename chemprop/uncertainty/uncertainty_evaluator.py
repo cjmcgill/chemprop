@@ -440,8 +440,8 @@ class SharpnessEvaluator(UncertaintyEvaluator):
         for i in range(num_tasks):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
-            shar=(sum(task_unc)/len(task_unc))
-            sha.append(shar)
+            task_sha=np.mean(task_unc) 
+            sha.append(task_sha) 
             
         return sha
 
@@ -482,8 +482,8 @@ class Sharpness_rootEvaluator(UncertaintyEvaluator):
         for i in range(num_tasks):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
-            shar=(sum(task_unc)/len(task_unc))
-            sha_root.append(np.sqrt(shar))
+            task_sha=np.mean(task_unc)
+            sha_root.append(np.sqrt(task_sha))
             
         return sha_root
 
@@ -523,12 +523,12 @@ class CoeffcientVarianceEvaluator(UncertaintyEvaluator):
         for i in range(num_tasks):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
-            q=sum(task_unc)/len(task_unc)
+            q=np.mean(task_unc)
             x=np.sqrt(np.array(task_unc))
             l=np.array((x-q)**2)
             k=(sum(l)/(len(l)-1))
             cvs=(np.sqrt(k))/(q)
-            cv.append(cvs)
+            cv.append(cvs) 
         return cv
 
 

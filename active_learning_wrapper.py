@@ -32,7 +32,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     initial_trainval_indices_path: str = None  # path to pickle file containing
     # a list of indices for data in data path
     gpu: int = None  # which gpu to use
-    no_comparison_model: bool = False  # if True, will not train a comparison
+    no_comparison_model: bool = False  # if True, will not train a comparison model
     search_function: Literal['ensemble', 'random', 'mve', 'mve_ensemble',
                              'evidential', 'evidential_epistemic',
                              'evidential_aleatoric', 'evidential_total',
@@ -218,6 +218,7 @@ def get_initial_train_args(
         train_config_path: str,
         data_path: str,
         search_function,
+        active_args: ActiveArgs,
 ):
     with open(train_config_path) as f:
         config_dict = json.load(f)
@@ -242,6 +243,9 @@ def get_initial_train_args(
             search_function == 'evidential_epistemic':
         commandline_inputs.extend(['--loss_function', 'evidential'])
     initial_train_args = TrainArgs().parse_args(commandline_inputs)
+
+    if active_args.gpu is not None:
+        commandline_inputs.extend(['--gpu', active_args.gpu])
 
     initial_train_args.task_names = get_task_names(
         path=data_path,
