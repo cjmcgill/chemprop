@@ -23,6 +23,7 @@ class ActiveArgs(Tap):
     save_dir: str  # where to save the plots
     evaluation_path: str  # location of uncertainty_evaluations.csv file
     results_path: str  # location of test_results.csv file
+    value_name: str  # name of the value as it shows in test_results.csv
     no_spearman: bool = False  # will not plot spearman if it is True
     no_sharpness: bool  = False  # will not plot sharpness if it is True
     no_sharpness_root: bool = False  # will not plot sharpness_root if it is True
@@ -109,9 +110,9 @@ def read_result(active_args: ActiveArgs):
         #         if len(row) > 1:  
         #             value.append(row[1])  
         data = pd.read_csv(active_args.results_path)
-        true=(data["u0"])
-        first=(data[f"u0_{int(data_points[0])}"])
-        last=(data[f"u0_{int(data_points[-1])}"])
+        true=(data[f"{active_args.value_name}"])
+        first=(data[f"{active_args.value_name}_{int(data_points[0])}"])
+        last=(data[f"{active_args.value_name}_{int(data_points[-1])}"])
                 
         
         return spearmans, nlls, miscalibration_areas, ences, \
@@ -261,20 +262,39 @@ def plot_nll(active_args,nll,data_points):
 
 def plot_true_predicted(active_args,true,last,first):
      if len(true)==len(first):
-            plt.scatter(first, true)
+            fig, ax = plt.subplots()
+            plt.scatter(first, true,color='green')
             # plt.plot(first, true, '-')
             plt.xlabel("Predicted Value")
             plt.ylabel("True Value")
             plt.grid(True)
-            # plt.plot([min(true)-(min(true)/10), max(first)+(max(first)/10)], [min(true)-(min(true)/10), max(first)+(max(first)/10)],'k')
+            lims = [
+                    np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+                    np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+                ]
+            ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+            ax.set_aspect('equal')
+            ax.set_xlim(lims)
+            ax.set_ylim(lims)
+            plt.title('First Step')
             plt.savefig(os.path.join(active_args.plot_save_dir,'true_pred1_plot.png'))
             plt.clf()
      if len(true)==len(last):
-            plt.scatter(last, true)
+            fig, ax = plt.subplots()
+            plt.scatter(last, true, color='red')
             # plt.plot(last, true, '-')
             plt.xlabel("Predicted Value")
             plt.ylabel("True Value")
             plt.grid(True)
+            lims = [
+                    np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+                    np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+                ]
+            ax.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+            ax.set_aspect('equal')
+            ax.set_xlim(lims)
+            ax.set_ylim(lims)
+            plt.title('Last Step')
             plt.savefig(os.path.join(active_args.plot_save_dir,'true_pred2_plot.png'))
             plt.clf()
 
