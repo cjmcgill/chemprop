@@ -96,8 +96,6 @@ def active_learning(active_args: ActiveArgs):
     )
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
-    spearman1, nll1, miscalibration_area1, ence1, sharpness1 =[], [], [], [], []
-    shar_root1, cv1 = [], [] 
     print(active_args.train_sizes)
     for i in range(len(active_args.train_sizes)):
         active_args.iter_save_dir = os.path.join(

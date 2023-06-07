@@ -9,6 +9,7 @@ from typing_extensions import Literal
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
+import pandas as pd
 from chemprop.args import TrainArgs, PredictArgs
 from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
 from chemprop.train import cross_validate, run_training
@@ -21,6 +22,7 @@ class ActiveArgs(Tap):
 
     save_dir: str  # where to save the plots
     evaluation_path: str  # location of uncertainty_evaluations.csv file
+    results_path: str  # location of test_results.csv file
     no_spearman: bool = False  # will not plot spearman if it is True
     no_sharpness: bool  = False  # will not plot sharpness if it is True
     no_sharpness_root: bool = False  # will not plot sharpness_root if it is True
@@ -34,15 +36,9 @@ class ActiveArgs(Tap):
     no_nll: bool = False  # will not plot nll if it is True
 
 
-spearmans, cv, rmses, rmses2, sharpness = [], [], [], [], []
-nlls, miscalibration_areas, ences, sharpness_root = [], [], [], []
-rmses, rmses2, data_points = [], [], []
-def plot_results(active_args: ActiveArgs):
-    spearmans1, cv1, rmses1, rmses21, sharpness1, data_point1 = [], [], [], [], [], []
-    nlls1, miscalibration_areas1, ences1, sharpness_root1 = [], [], [], []
 
-    spearmans1, nlls1, miscalibration_areas1, ences1, sharpness1, sharpness_root1, cv1,  rmses1, rmses21, data_point1 = read_result(active_args=active_args)
-    
+def plot_results(active_args: ActiveArgs):
+    spearmans1, nlls1, miscalibration_areas1, ences1, sharpness1, sharpness_root1, cv1,  rmses1, rmses21, data_point1, first, last, true = read_result(active_args=active_args)
     # rmses.append(rmses1)
     # rmses2.append(rmses21)
     # sharpness_root.append(sharpness_root1)
@@ -61,23 +57,23 @@ def plot_results(active_args: ActiveArgs):
     if not active_args.no_rmse2:
         plot_rmse2(active_args=active_args,rmses=rmses21,data_points=data_point1)        
     if not active_args.no_spearman:
-        plot_spearman(active_args=active_args,spearmans=spearmans1,data_points=data_points)
+        plot_spearman(active_args=active_args,spearmans=spearmans1,data_points=data_point1)
     if not active_args.no_sharpness:
-        plot_sharpness(active_args=active_args,sharpness=sharpness1,data_points=data_points)
+        plot_sharpness(active_args=active_args,sharpness=sharpness1,data_points=data_point1)
     if not active_args.no_sharpness_root:
-        plot_sharpness_root(active_args=active_args,sharpness_root=sharpness_root1,data_points=data_points)
+        plot_sharpness_root(active_args=active_args,sharpness_root=sharpness_root1,data_points=data_point1)
     if not active_args.no_rmse2:
-        plot_cv(active_args=active_args,cv=cv1,data_points=data_points)
+        plot_cv(active_args=active_args,cv=cv1,data_points=data_point1)
     if not active_args.no_miscalibration_area:
-        plot_miscalibration_area(active_args=active_args,miscalibration_area=miscalibration_areas1,data_points=data_points)
+        plot_miscalibration_area(active_args=active_args,miscalibration_area=miscalibration_areas1,data_points=data_point1)
     if not active_args.no_rmse2:
-        plot_ence(active_args=active_args,ences=ences1,data_points=data_points)   
+        plot_ence(active_args=active_args,ences=ences1,data_points=data_point1)   
     if not active_args.no_subplot:
-         sub_plot(active_args=active_args,rmses=rmses1,rmses2=rmses21,spearman=spearmans1,cv=cv1)
+         sub_plot(active_args=active_args,rmses=rmses1,rmses2=rmses21,spearman=spearmans1,cv=cv1,data_points=data_point1)
     if not active_args.no_nll:
-         plot_nll(active_args=active_args,nll=nlls1,data_points=data_points)
-    # if not active_args.no_true_vs_predicted:
-    #     plot_true_predicted(active_args=active_args,true=true,predicted=predicted)
+         plot_nll(active_args=active_args,nll=nlls1,data_points=data_point1)
+    if not active_args.no_true_vs_predicted:
+        plot_true_predicted(active_args=active_args,true=true,last=last, first=first)
     
         
 
@@ -89,7 +85,9 @@ def plot_results(active_args: ActiveArgs):
 
 def read_result(active_args: ActiveArgs):
         with open(active_args.evaluation_path, "r") as f:
-            
+            spearmans, cv, rmses, rmses2, sharpness = [], [], [], [], []
+            nlls, miscalibration_areas, ences, sharpness_root = [], [], [], []
+            rmses, rmses2, data_points = [], [], []
             reader = csv.DictReader(f)
             for i, line in enumerate(tqdm(reader)):
                     spearmans.append(float(line['spearman']))
@@ -103,8 +101,21 @@ def read_result(active_args: ActiveArgs):
                     rmses2.append(float(line['rmse2']))
                     data_points.append(float(line['data_points']))
 
+        # with open(active_args.results_path, "r") as f:
+        #     reader = csv.reader(f)
+        #     # next(reader)
+        #     value = []
+        #     for row in reader:
+        #         if len(row) > 1:  
+        #             value.append(row[1])  
+        data = pd.read_csv(active_args.results_path)
+        true=(data["u0"])
+        first=(data[f"u0_{int(data_points[0])}"])
+        last=(data[f"u0_{int(data_points[-1])}"])
+                
+        
         return spearmans, nlls, miscalibration_areas, ences, \
-        sharpness, sharpness_root, cv, rmses, rmses2, data_points
+        sharpness, sharpness_root, cv, rmses, rmses2, data_points, first, last, true
     
 def plot_rmse(active_args, rmses, data_points):
         if len(rmses)==len(data_points):
@@ -128,7 +139,7 @@ def plot_rmse2(active_args, rmses, data_points):
 
 
 def plot_spearman(active_args, spearmans, data_points):
-        if len(rmses)==len(data_points):
+        if len(spearmans)==len(data_points):
             plt.scatter(data_points, spearmans)
             plt.plot(data_points, spearmans, '-')
             plt.xlabel("Data Points")
@@ -191,7 +202,7 @@ def plot_ence(active_args, ences, data_points):
 
 
 
-def sub_plot(active_args, rmses, rmses2, spearman, cv):
+def sub_plot(active_args, rmses, rmses2, spearman, cv,data_points):
         fig, axs = plt.subplots(4)
         fig.suptitle('Vertically stacked subplots')
         axs[0].plot(data_points, rmses, linewidth=3, color='g')
@@ -216,6 +227,25 @@ def sub_plot(active_args, rmses, rmses2, spearman, cv):
         plt.subplots_adjust(hspace=0.5)
         plt.savefig(os.path.join(active_args.plot_save_dir,'sub_plot.png'))
         plt.clf()
+        fig, axs = plt.subplots(nrows=2, ncols=2)
+        fig.suptitle('Vertically stacked subplots')
+        axs[0,0].plot(data_points, rmses, linewidth=3, color='g')
+        axs[0,1].plot(data_points, rmses2,linewidth=3, color='r')
+        axs[1,0].plot(data_points, spearman,linewidth=3, color='m')
+        axs[1,1].plot(data_points, cv,linewidth=3, color='b')
+        # axs[0].set_title('Plot 1')
+        # axs[1].set_title('Plot 2')
+        # axs[2].set_title('Plot 3')
+        axs[0,0].set_xlabel('Data Points')
+        axs[0,0].set_ylabel('RMSE')
+        axs[0,1].set_ylabel('RMSE2')
+        axs[1,0].set_ylabel('SpearMan')
+        axs[1,1].set_ylabel('CV')
+       
+        plt.subplots_adjust(hspace=0.5, wspace=0.5)
+        
+        plt.savefig(os.path.join(active_args.plot_save_dir,'sub2_plot.png'))
+        plt.clf()
      
 
 def plot_nll(active_args,nll,data_points):
@@ -227,6 +257,27 @@ def plot_nll(active_args,nll,data_points):
             plt.grid(True)
             plt.savefig(os.path.join(active_args.plot_save_dir,'nll_plot.png'))
             plt.clf()
+
+
+def plot_true_predicted(active_args,true,last,first):
+     if len(true)==len(first):
+            plt.scatter(first, true)
+            # plt.plot(first, true, '-')
+            plt.xlabel("Predicted Value")
+            plt.ylabel("True Value")
+            plt.grid(True)
+            # plt.plot([min(true)-(min(true)/10), max(first)+(max(first)/10)], [min(true)-(min(true)/10), max(first)+(max(first)/10)],'k')
+            plt.savefig(os.path.join(active_args.plot_save_dir,'true_pred1_plot.png'))
+            plt.clf()
+     if len(true)==len(last):
+            plt.scatter(last, true)
+            # plt.plot(last, true, '-')
+            plt.xlabel("Predicted Value")
+            plt.ylabel("True Value")
+            plt.grid(True)
+            plt.savefig(os.path.join(active_args.plot_save_dir,'true_pred2_plot.png'))
+            plt.clf()
+
 
 if __name__ == '__main__':
     plot_results(ActiveArgs().parse_args())
