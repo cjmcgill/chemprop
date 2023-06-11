@@ -1,18 +1,9 @@
-from chemprop.train.make_predictions import make_predictions
 import os
-import shutil
 import csv
-import json
-import pickle
-from typing import List, Tuple, Set
-from typing_extensions import Literal
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-from chemprop.args import TrainArgs, PredictArgs
-from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
-from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
 
 import matplotlib.pyplot as plt
@@ -35,6 +26,8 @@ class ActiveArgs(Tap):
     no_true_vs_predicted: bool = False  # will not plot true vs predicted value if it is True
     no_subplot: bool = False  # will not plot subplots if it is True
     no_nll: bool = False  # will not plot nll if it is True
+    num_subplots: list  # how many subplots are in one plot
+
 
 
 
@@ -51,6 +44,13 @@ def plot_results(active_args: ActiveArgs):
     # sharpness_root.append(sharpness_root1)
     # cv.append(cv1)
     # data_points.append(data_point1)
+    print('----------------------------------------------')
+    print(active_args.num_subplots)
+
+
+
+
+
     active_args.plot_save_dir=os.path.join(active_args.save_dir,'plot')
     makedirs(active_args.plot_save_dir)
     if not active_args.no_rmse:
@@ -76,12 +76,6 @@ def plot_results(active_args: ActiveArgs):
     if not active_args.no_true_vs_predicted:
         plot_true_predicted(active_args=active_args,true=true,last=last, first=first)
     
-        
-
-    
-    
-
-    # plot_true_predicted()
 
 
 def read_result(active_args: ActiveArgs):
