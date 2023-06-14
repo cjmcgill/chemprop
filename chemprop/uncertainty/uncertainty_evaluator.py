@@ -407,6 +407,10 @@ class ExpectedNormalizedErrorEvaluator(UncertaintyEvaluator):
 
 class SharpnessEvaluator(UncertaintyEvaluator):
    
+    """
+    A class that evaluates sharpness by averaging the variance 
+    Method discussed in https://iopscience.iop.org/article/10.1088/2632-2153/ab7e1a
+    """
 
     def raise_argument_errors(self):
         super().raise_argument_errors()
@@ -448,8 +452,11 @@ class SharpnessEvaluator(UncertaintyEvaluator):
 
 
 class Sharpness_rootEvaluator(UncertaintyEvaluator):
-   
 
+    """
+    A class that evaluates root version of sharpness  by taking square root of sharpness 
+    Method discussed in https://iopscience.iop.org/article/10.1088/2632-2153/ab7e1a
+    """
     def raise_argument_errors(self):
         super().raise_argument_errors()
         if self.dataset_type != "regression":
@@ -488,8 +495,12 @@ class Sharpness_rootEvaluator(UncertaintyEvaluator):
         return sha_root
 
 
-class CoeffcientVarianceEvaluator(UncertaintyEvaluator):
+class CoefficientVarianceEvaluator(UncertaintyEvaluator):
    
+    """
+    A class that evaluates coefficient variance higher cv may indicate more robust uncerainty estimates.
+    Method discussed in https://iopscience.iop.org/article/10.1088/2632-2153/ab7e1a
+    """
 
     def raise_argument_errors(self):
         super().raise_argument_errors()
@@ -510,7 +521,7 @@ class CoeffcientVarianceEvaluator(UncertaintyEvaluator):
         mask = np.array(mask)
         num_tasks = len(mask)
         preds = np.array(preds)
-        cv,q,l,k,cvs = [],[],[],[],[]
+        cv = []
         if self.is_atom_bond_targets:
             uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
             targets = [np.concatenate(x) for x in zip(*targets)]
@@ -523,11 +534,7 @@ class CoeffcientVarianceEvaluator(UncertaintyEvaluator):
         for i in range(num_tasks):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
-            q=np.mean(task_unc)
-            x=np.sqrt(np.array(task_unc))
-            l=np.array((x-q)**2)
-            k=(sum(l)/(len(l)-1))
-            cvs=(np.sqrt(k))/(q)
+            cvs=(np.sqrt((sum(np.array((np.sqrt(np.array(task_unc))-np.mean(task_unc))**2))/(len(np.array((np.sqrt(np.array(task_unc))-np.mean(task_unc))**2))-1))))/(np.mean(task_unc))
             cv.append(cvs) 
         return cv
 
@@ -605,7 +612,7 @@ def build_uncertainty_evaluator(
         "spearman": SpearmanEvaluator,
         "sharpness": SharpnessEvaluator,
         "sharpness_root": Sharpness_rootEvaluator,
-        "cv": CoeffcientVarianceEvaluator
+        "cv": CoefficientVarianceEvaluator
     }
 
     classification_metrics = [
