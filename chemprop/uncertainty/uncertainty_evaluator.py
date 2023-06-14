@@ -431,7 +431,7 @@ class SharpnessEvaluator(UncertaintyEvaluator):
         mask = np.array(mask)
         num_tasks = len(mask)
         preds = np.array(preds)
-        sha,shar = [],[]
+        sha = []
         if self.is_atom_bond_targets:
             uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
             targets = [np.concatenate(x) for x in zip(*targets)]
@@ -476,7 +476,7 @@ class Sharpness_rootEvaluator(UncertaintyEvaluator):
         mask = np.array(mask)
         num_tasks = len(mask)
         preds = np.array(preds)
-        shar,sha_root = [],[]
+        sha_root = []
         if self.is_atom_bond_targets:
             uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
             targets = [np.concatenate(x) for x in zip(*targets)]
