@@ -67,7 +67,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     """
     test_fraction: float = 0.1  # This is the fraction of data used for test
     # if a separate test set is not provided.
-    initial_trainval_fraction: float = None
+    # initial_trainval_fraction: float = None
+    initial_trainval_size: int = None
     active_batch_size: int = None  # the number of data points added
     # to trainval in each cycle
     active_iterations_limit: int = None  # the max number of
@@ -430,7 +431,7 @@ def initial_trainval_split(
 ) -> Tuple[MoleculeDataset]:
     num_data = len(whole_data)
     num_nontest = len(nontest_data)
-
+    active_args.initial_trainval_fraction = active_args.initial_trainval_size / num_data
     if active_args.active_batch_size is None:  # default: 10 steps
         active_args.active_batch_size = (num_nontest // 10) + 1
     if (
