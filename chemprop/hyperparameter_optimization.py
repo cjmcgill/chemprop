@@ -86,6 +86,8 @@ def hyperopt(args: HyperoptArgs) -> None:
 
         for key, value in hyperparams.items():
             setattr(hyper_args, key, value)
+        
+
 
         if "linked_hidden_size" in hyperparams:
             hyper_args.ffn_hidden_size = hyperparams["linked_hidden_size"]
@@ -128,16 +130,21 @@ def hyperopt(args: HyperoptArgs) -> None:
             "seed": seed,
         }
 
+
     # Iterate over a number of trials
     for i in range(args.num_iters):
         # run fmin and load trials in single steps to allow for parallel operation
         trials = load_trials(
             dir_path=args.hyperopt_checkpoint_dir, previous_trials=manual_trials
         )
-        if len(trials) > 0 and set(space.keys()) != set(trials.vals.keys()):
+        loaded_hyperparam_keys = set()
+        for trial in trials:
+            print(trial)
+            loaded_hyperparam_keys.update(trial["result"]["hyperparams"].keys())
+        if len(trials) > 0 and set(space.keys()) != loaded_hyperparam_keys:
             raise ValueError(
                 f"Loaded hyperopt checkpoints files must be searching over the same parameters as \
-                    the hyperparameter optimization job. Loaded trials covered variation in the parameters {set(trials.vals.keys())}. \
+                    the hyperparameter optimization job. Loaded trials covered variation in the parameters {loaded_hyperparam_keys}. \
                     The current search is over the parameters {set(space.keys())}."
             )
         if len(trials) >= args.num_iters:

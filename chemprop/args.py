@@ -1084,7 +1084,7 @@ class HyperoptArgs(TrainArgs):
         supported_parameters = [
             "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr_ratio", "hidden_size",
-            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs"
+            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs", 
         ]
         unsupported_keywords = set(self.search_parameter_keywords) - set(supported_keywords)
         if len(unsupported_keywords) != 0:

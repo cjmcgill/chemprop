@@ -5,12 +5,13 @@ from typing import List, Dict
 import csv
 import json
 import logging
-
+import random
 from hyperopt import Trials, hp
 import numpy as np
-
 from chemprop.constants import HYPEROPT_SEED_FILE_NAME
 from chemprop.utils import makedirs
+from skopt import space
+from skopt import gp_minimize
 
 
 def build_search_space(search_parameters: List[str], train_epochs: int = None) -> dict:
@@ -29,20 +30,36 @@ def build_search_space(search_parameters: List[str], train_epochs: int = None) -
         "aggregation_norm": hp.quniform("aggregation_norm", low=1, high=200, q=1),
         "batch_size": hp.quniform("batch_size", low=5, high=200, q=5),
         "depth": hp.quniform("depth", low=2, high=6, q=1),
-        "dropout": hp.quniform("dropout", low=0.0, high=0.4, q=0.05),
+        "dropout": hp.choice(
+            "dropout_type",
+            [
+                0,
+                hp.choice(
+                    "with_dropout",
+                    [
+                        hp.quniform("low_dropout", 0.01, 0.05, 0.01),
+                        hp.quniform("high_dropout", 0.1, 0.4, 0.05),
+                    ],
+                ),
+            ],
+        ),
         "ffn_hidden_size": hp.quniform("ffn_hidden_size", low=300, high=2400, q=100),
         "ffn_num_layers": hp.quniform("ffn_num_layers", low=2, high=6, q=1),
-        "final_lr_ratio": hp.loguniform("final_lr_ratio", low=np.log(1e-4), high=0.),
+        "final_lr_ratio": hp.loguniform("final_lr_ratio", low=np.log(1e-4), high=0.0),
         "hidden_size": hp.quniform("hidden_size", low=300, high=2400, q=100),
-        "init_lr_ratio": hp.loguniform("init_lr_ratio", low=np.log(1e-4), high=0.),
-        "linked_hidden_size": hp.quniform("linked_hidden_size", low=300, high=2400, q=100),
+        "init_lr_ratio": hp.loguniform("init_lr_ratio", low=np.log(1e-4), high=0.0),
+        "linked_hidden_size": hp.quniform(
+            "linked_hidden_size", low=300, high=2400, q=100
+        ),
         "max_lr": hp.loguniform("max_lr", low=np.log(1e-6), high=np.log(1e-2)),
-        "warmup_epochs": hp.quniform("warmup_epochs", low=1, high=train_epochs // 2, q=1)
+        "warmup_epochs": hp.quniform(
+            "warmup_epochs", low=1, high=train_epochs // 2, q=1
+        ),
     }
+
     space = {}
     for key in search_parameters:
         space[key] = available_spaces[key]
-
     return space
 
 
@@ -91,6 +108,10 @@ def merge_trials(trials: Trials, new_trials_data: List[Dict]) -> Trials:
         hyperopt_trial[0]["misc"]["tid"] = tid
         for key in hyperopt_trial[0]["misc"]["idxs"].keys():
             hyperopt_trial[0]["misc"]["idxs"][key] = [tid]
+            if hyperopt_trial[0]["misc"]["vals"][key] == []:
+                hyperopt_trial[0]["misc"]["idxs"][key] = []
+            else:
+                hyperopt_trial[0]["misc"]["idxs"][key] = [tid]
         trials.insert_trial_docs(hyperopt_trial)
         trials.refresh()
     return trials
@@ -230,7 +251,6 @@ def load_manual_trials(
 
     manual_trials_data = []
     for i, trial_dir in enumerate(manual_trials_dirs):
-
         # Extract trial data from test_scores.csv
         with open(os.path.join(trial_dir, "test_scores.csv")) as f:
             reader = csv.reader(f)
