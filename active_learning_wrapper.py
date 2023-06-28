@@ -159,6 +159,7 @@ def active_learning(active_args: ActiveArgs):
         if not active_args.no_comparison_model:
             cross_validate(args=train_args2, train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args)
+        test_predictions(active_args=active_args, train_args=train_args)
         if not active_args.no_comparison_model:
             run_predictions2(active_args=active_args, train_args=train_args2)
         get_pred_results(
@@ -218,8 +219,8 @@ def active_learning(active_args: ActiveArgs):
         cleanup_active_files(
             active_args=active_args,
             train_args=train_args,
-            remove_models=True,
-            remove_datainputs=True,
+            remove_models=False,
+            remove_datainputs=False,
             remove_preds=False,
             remove_indices=False,
         )
@@ -227,8 +228,8 @@ def active_learning(active_args: ActiveArgs):
             cleanup_active_files2(
                 active_args=active_args,
                 train_args2=train_args2,
-                remove_models=True,
-                remove_datainputs=True,
+                remove_models=False,
+                remove_datainputs=False,
                 remove_preds=False,
                 remove_indices=False,
             )
@@ -601,6 +602,64 @@ def save_datainputs(
         active_args=active_args,
     )
 
+def test_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+    argument_input = [
+        "--test_path",
+        os.path.join(active_args.run_save_dir, "test_full.csv"),
+        "--checkpoint_dir",
+        active_args.iter_save_dir,
+        "--preds_path",
+        os.path.join(active_args.iter_save_dir, "test_preds.csv"),
+        "--evaluation_scores_path",
+        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
+
+    ]
+    if active_args.search_function != "random":
+        argument_input.extend(
+            [
+                "--evaluation_methods",
+                "nll",
+                "miscalibration_area",
+                "ence",
+                "spearman",
+                "sharpness",
+                "sharpness_root",
+                "cv",
+            ]
+        )
+    if active_args.features_path is not None:
+        argument_input.extend(
+            [
+                "--features_path",
+                os.path.join(active_args.active_save_dir, "whole_features.csv"),
+            ]
+        )
+    if isinstance(train_args.gpu, int):
+        argument_input.extend(["--gpu", train_args.gpu])
+    if active_args.search_function == "ensemble":
+        assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
+        argument_input.extend(["--uncertainty_method", "ensemble"])
+    elif active_args.search_function == "mve":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif active_args.search_function == "mve_ensemble":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif (
+        active_args.search_function == "evidential_total"
+        or active_args.search_function == "evidential"
+    ):
+        argument_input.extend(["--uncertainty_method", "evidential_total"])
+    elif active_args.search_function == "evidential_aleatoric":
+        argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
+    elif active_args.search_function == "evidential_epistemic":
+        argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
+    elif active_args.search_function == "random":
+        pass
+    else:
+        raise ValueError(
+            f"The search function {active_args.search_function}" + "is not supported."
+        )
+    pred_args = PredictArgs().parse_args(argument_input)
+    make_predictions(pred_args)
 
 # run predictions for selection model
 def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
@@ -612,16 +671,22 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
         "--preds_path",
         os.path.join(active_args.iter_save_dir, "whole_preds.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
-        "--evaluation_methods",
-        "nll",
-        "miscalibration_area",
-        "ence",
-        "spearman",
-        "sharpness",
-        "sharpness_root",
-        "cv",
+        os.path.join(active_args.iter_save_dir, "evaluation_scores2.csv"),
+
     ]
+    if active_args.search_function != "random":
+        argument_input.extend(
+            [
+                "--evaluation_methods",
+                "nll",
+                "miscalibration_area",
+                "ence",
+                "spearman",
+                "sharpness",
+                "sharpness_root",
+                "cv",
+            ]
+        )
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -661,7 +726,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
 def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     argument_input = [
         "--test_path",
-        os.path.join(active_args.active_save_dir, "whole_smiles.csv"),
+        os.path.join(active_args.active_save_dir, "whole_full.csv"),
         "--checkpoint_dir",
         active_args.iter_save_dir2,
         "--preds_path",
@@ -977,34 +1042,36 @@ def get_rmse2(active_args):
 
 # extract calculated evaluation scores by chemprop
 def get_evaluation_scores(active_args):
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
-    ) as file:
-        csv_reader = csv.reader(file)
-        rows = list(csv_reader)
-        transposed_rows = list(zip(*rows))
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
-        "w",
-        newline="",
-    ) as file:
-        csv_writer = csv.writer(file)
-        csv_writer.writerows(transposed_rows)
+    if active_args.search_function != "random":
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+        ) as file:
+            csv_reader = csv.reader(file)
+            rows = list(csv_reader)
+            transposed_rows = list(zip(*rows))
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(transposed_rows)
 
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
-    ) as f:
-        reader = csv.DictReader(f)
-        for i, line in enumerate(tqdm(reader)):
-            for j in active_args.task_names:
-                spearmans = float(line["spearman"])
-                nlls = float(line["nll"])
-                miscalibration_areas = float(line["miscalibration_area"])
-                ences = float(line["ence"])
-                sharpness = float(line["sharpness"])
-                sharpness_root = float(line["sharpness_root"])
-                cv = float(line["cv"])
-
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+        ) as f:
+            reader = csv.DictReader(f)
+            for i, line in enumerate(tqdm(reader)):
+                for j in active_args.task_names:
+                    spearmans = float(line["spearman"])
+                    nlls = float(line["nll"])
+                    miscalibration_areas = float(line["miscalibration_area"])
+                    ences = float(line["ence"])
+                    sharpness = float(line["sharpness"])
+                    sharpness_root = float(line["sharpness_root"])
+                    cv = float(line["cv"])
+    else:
+            spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
     return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv
 
 
