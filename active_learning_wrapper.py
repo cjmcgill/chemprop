@@ -73,6 +73,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     # to trainval in each cycle
     active_iterations_limit: int = None  # the max number of
     # training iterations to go through
+    train_seed: int = 0 # seed for the initial training split
+    test_seed: int = 0 # seed for the test split
 
 
 def active_learning(active_args: ActiveArgs):
@@ -158,10 +160,10 @@ def active_learning(active_args: ActiveArgs):
         cross_validate(args=train_args, train_func=run_training)
         if not active_args.no_comparison_model:
             cross_validate(args=train_args2, train_func=run_training)
-        run_predictions(active_args=active_args, train_args=train_args)
-        test_predictions(active_args=active_args, train_args=train_args)
+        run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu)
+        test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu)
         if not active_args.no_comparison_model:
-            run_predictions2(active_args=active_args, train_args=train_args2)
+            run_predictions2(active_args=active_args, train_args=train_args2,gpu=active_args.gpu)
         get_pred_results(
             active_args=active_args,
             whole_data=whole_data,
@@ -219,7 +221,7 @@ def active_learning(active_args: ActiveArgs):
         cleanup_active_files(
             active_args=active_args,
             train_args=train_args,
-            remove_models=False,
+            remove_models=True,
             remove_datainputs=False,
             remove_preds=False,
             remove_indices=False,
@@ -228,7 +230,7 @@ def active_learning(active_args: ActiveArgs):
             cleanup_active_files2(
                 active_args=active_args,
                 train_args2=train_args2,
-                remove_models=False,
+                remove_models=True,
                 remove_datainputs=False,
                 remove_preds=False,
                 remove_indices=False,
@@ -271,10 +273,12 @@ def get_initial_train_args(
         or search_function == "evidential_epistemic"
     ):
         commandline_inputs.extend(["--loss_function", "evidential"])
+    
+    if gpu is not None:
+        commandline_inputs.extend(["--gpu", str(gpu)])
     initial_train_args = TrainArgs().parse_args(commandline_inputs)
 
-    if gpu is not None:
-        commandline_inputs.extend(["--gpu", gpu])
+
 
     initial_train_args.task_names = get_task_names(
         path=data_path,
@@ -336,7 +340,7 @@ def get_test_split(
             d.index = i
         sizes = (1 - active_args.test_fraction, active_args.test_fraction, 0)
         nontest_data, test_data, _ = split_data(
-            data=data, split_type=active_args.split_type, sizes=sizes
+            data=data, split_type=active_args.split_type, sizes=sizes,seed=active_args.test_seed,
         )
         if save_indices:
             nontest_indices = {d.index for d in nontest_data}
@@ -468,7 +472,7 @@ def initial_trainval_split(
         )
         sizes = (fraction_trainval, 1 - fraction_trainval, 0)
         trainval_data, remaining_data, _ = split_data(
-            data=nontest_data, split_type=active_args.split_type, sizes=sizes
+            data=nontest_data, split_type=active_args.split_type, sizes=sizes,seed=active_args.train_seed,
         )
         if save_indices:
             trainval_indices = {d.index for d in trainval_data}
@@ -602,7 +606,7 @@ def save_datainputs(
         active_args=active_args,
     )
 
-def test_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
     argument_input = [
         "--test_path",
         os.path.join(active_args.run_save_dir, "test_full.csv"),
@@ -634,8 +638,10 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
                 os.path.join(active_args.active_save_dir, "whole_features.csv"),
             ]
         )
-    if isinstance(train_args.gpu, int):
-        argument_input.extend(["--gpu", train_args.gpu])
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
     if active_args.search_function == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
         argument_input.extend(["--uncertainty_method", "ensemble"])
@@ -662,7 +668,7 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     make_predictions(pred_args)
 
 # run predictions for selection model
-def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
     argument_input = [
         "--test_path",
         os.path.join(active_args.active_save_dir, "whole_full.csv"),
@@ -694,8 +700,10 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
                 os.path.join(active_args.active_save_dir, "whole_features.csv"),
             ]
         )
-    if isinstance(train_args.gpu, int):
-        argument_input.extend(["--gpu", train_args.gpu])
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
     if active_args.search_function == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
         argument_input.extend(["--uncertainty_method", "ensemble"])
@@ -723,7 +731,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs) -> None:
 
 
 # run predictions for comparison model
-def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
+def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
     argument_input = [
         "--test_path",
         os.path.join(active_args.active_save_dir, "whole_full.csv"),
@@ -739,8 +747,10 @@ def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
                 os.path.join(active_args.active_save_dir, "whole_features2.csv"),
             ]
         )
-    if isinstance(train_args.gpu, int):
-        argument_input.extend(["--gpu", train_args.gpu])
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
     if active_args.search_function2 == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
     pred_args2 = PredictArgs().parse_args(argument_input)
@@ -941,8 +951,8 @@ def cleanup_active_files(
     active_args: ActiveArgs,
     train_args: TrainArgs,
     remove_models: bool = True,
-    remove_datainputs: bool = True,
-    remove_preds: bool = True,
+    remove_datainputs: bool = False,
+    remove_preds: bool = False,
     remove_indices: bool = False,
 ) -> None:
     if remove_models:
@@ -983,8 +993,8 @@ def cleanup_active_files2(
     active_args: ActiveArgs,
     train_args2: TrainArgs,
     remove_models: bool = True,
-    remove_datainputs: bool = True,
-    remove_preds: bool = True,
+    remove_datainputs: bool = False,
+    remove_preds: bool = False,
     remove_indices: bool = False,
 ) -> None:
     if remove_models:
