@@ -367,3 +367,5 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
     loss = L_NLL + lam * (L_REG - epsilon)
 
     return loss
+
+def beta-nll_loss()
