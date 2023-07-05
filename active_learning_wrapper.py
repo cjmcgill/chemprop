@@ -13,7 +13,7 @@ from chemprop.args import TrainArgs, PredictArgs
 from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
 from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
-
+import random
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
@@ -75,6 +75,10 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     # training iterations to go through
     train_seed: int = 0 # seed for the initial training split
     test_seed: int = 0 # seed for the test split
+    evidential_regularization: float = 0.0  # the regularization parameter for evidential training
+    initial_trainval_type: Literal["random", "related_random","related_both","related_high","related_low","related_min","related_max","related_mean"] = "random"
+    initial_trainval_seed: int = None
+    initial_trainval_fraction: float = None
 
 
 def active_learning(active_args: ActiveArgs):
@@ -83,6 +87,7 @@ def active_learning(active_args: ActiveArgs):
         data_path=active_args.data_path,
         search_function=active_args.search_function,
         gpu=active_args.gpu,
+        evidential_regularization=active_args.evidential_regularization,
     )
     if not active_args.no_comparison_model:
         train_args2 = get_initial_train_args(
@@ -90,6 +95,7 @@ def active_learning(active_args: ActiveArgs):
             data_path=active_args.data_path,
             search_function=active_args.search_function2,
             gpu=active_args.gpu,
+            evidential_regularization=active_args.evidential_regularization,
         )
     active_args.split_type = train_args.split_type
     active_args.task_names = train_args.task_names
@@ -243,6 +249,7 @@ def get_initial_train_args(
     data_path: str,
     search_function,
     gpu,
+    evidential_regularization
 ):
     with open(train_config_path) as f:
         config_dict = json.load(f)
@@ -276,6 +283,8 @@ def get_initial_train_args(
     
     if gpu is not None:
         commandline_inputs.extend(["--gpu", str(gpu)])
+    if evidential_regularization is not None:
+        commandline_inputs.extend(["--evidential_regularization", str(evidential_regularization)])
     initial_train_args = TrainArgs().parse_args(commandline_inputs)
 
 
@@ -427,6 +436,28 @@ def save_smiles(
         writer.writerows(data.smiles())
 
 
+
+
+def print_max_duplicates(lst):
+    flat_list = [item for sublist in lst for item in sublist]
+    frequency = {}
+    max_frequency = 0
+
+    # Count the frequency of each value
+    for value in flat_list:
+        if value in frequency:
+            frequency[value] += 1
+        else:
+            frequency[value] = 1
+
+        # Update max_frequency if necessary
+        if frequency[value] > max_frequency:
+            max_frequency = frequency[value]
+
+    return max_frequency
+
+
+
 def initial_trainval_split(
     active_args: ActiveArgs,
     nontest_data: MoleculeDataset,
@@ -436,7 +467,10 @@ def initial_trainval_split(
 ) -> Tuple[MoleculeDataset]:
     num_data = len(whole_data)
     num_nontest = len(nontest_data)
-    active_args.initial_trainval_fraction = active_args.initial_trainval_size / num_data
+    if active_args.initial_trainval_size is not None:
+        active_args.initial_trainval_fraction = active_args.initial_trainval_size / num_data
+
+
     if active_args.active_batch_size is None:  # default: 10 steps
         active_args.active_batch_size = (num_nontest // 10) + 1
     if (
@@ -444,7 +478,8 @@ def initial_trainval_split(
         and active_args.initial_trainval_indices_path is None
     ):
         active_args.initial_trainval_fraction = active_args.active_batch_size / num_data
-
+    if active_args.initial_trainval_size is None:
+        active_args.initial_trainval_size = int(active_args.initial_trainval_fraction * num_data)
     if active_args.initial_trainval_indices_path is not None:
         with open(active_args.initial_trainval_indices_path, "rb") as f:
             trainval_indices = pickle.load(f)
@@ -465,8 +500,157 @@ def initial_trainval_split(
                 save_dir=active_args.active_save_dir,
                 filename_base="initial_remaining",
             )
+        fraction_trainval = (
+            active_args.initial_trainval_fraction * num_data / num_nontest
+        )
 
-    else:
+
+    #  define related trainval set
+    if active_args.initial_trainval_type == "related_max":
+        target_nontest =MoleculeDataset.targets(nontest_data)
+        sorted_target=sorted(target_nontest,reverse=True)
+        frequency = {}
+        epsilon =1e-10
+        for i, sublist in enumerate(sorted_target):
+            for j, value in enumerate(sublist):
+                if value in frequency:
+                    frequency[value] += 1
+                    sublist[j] = value + frequency[value] * epsilon
+                else:
+                    frequency[value] = 0
+        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
+        sorted_trainval_indices=sorted_target_indices[0:active_args.initial_trainval_size]
+        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        )  
+    elif active_args.initial_trainval_type == "related_mean":
+        target_nontest =MoleculeDataset.targets(nontest_data)
+        sorted_target=sorted(target_nontest)
+        frequency = {}
+        epsilon =1e-10
+        for i, sublist in enumerate(sorted_target):
+            for j, value in enumerate(sublist):
+                if value in frequency:
+                    frequency[value] += 1
+                    sublist[j] = value + frequency[value] * epsilon
+                else:
+                    frequency[value] = 0
+        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
+        print((int(len(sorted_target_indices)/2))-int(active_args.initial_trainval_size/2))
+        print((int(len(sorted_target_indices)/2))+int(active_args.initial_trainval_size/2))
+        sorted_trainval_indices=sorted_target_indices[(int(len(sorted_target_indices)/2))-int(active_args.initial_trainval_size/2):(int(len(sorted_target_indices)/2))+int(active_args.initial_trainval_size/2)]
+        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        )
+    elif active_args.initial_trainval_type == "related_min":
+        target_nontest =MoleculeDataset.targets(nontest_data)
+        sorted_target=sorted(target_nontest)
+        frequency = {}
+        epsilon =1e-10
+        for i, sublist in enumerate(sorted_target):
+            for j, value in enumerate(sublist):
+                if value in frequency:
+                    frequency[value] += 1
+                    sublist[j] = value + frequency[value] * epsilon
+                else:
+                    frequency[value] = 0
+        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
+        sorted_trainval_indices=sorted_target_indices[0:active_args.initial_trainval_size]
+        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        )
+    elif active_args.initial_trainval_type == "related_high":
+            
+        nontest_indices={d.index for d in nontest_data}  
+        if active_args.initial_trainval_seed is  None:    
+                rand=random.randint(0, len(nontest_indices)-active_args.initial_trainval_size)
+        else:
+                rand= active_args.initial_trainval_seed
+        nontest_data_pickle_list=list(nontest_indices)
+        rand_nontest_data_list=nontest_data_pickle_list[rand:rand+active_args.initial_trainval_size]
+        rand_nontest_data=set(rand_nontest_data_list)
+        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:(0,{len(nontest_data)-active_args.initial_trainval_size})!"
+            
+        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+        remaining_data = MoleculeDataset(
+                [d for d in nontest_data if d.index not in trainval_data]
+        )
+        save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+        )            
+    elif active_args.initial_trainval_type == "related_low":
+        nontest_indices={d.index for d in nontest_data}  
+        if active_args.initial_trainval_seed is  None:    
+                rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices))
+        else:
+                rand= active_args.initial_trainval_seed
+        nontest_data_pickle_list=list(nontest_indices)
+        rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand]
+        rand_nontest_data=set(rand_nontest_data_list)
+        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)})!"
+        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+        remaining_data = MoleculeDataset(
+                [d for d in nontest_data if d.index not in trainval_data]
+        )
+        save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+        )
+    elif active_args.initial_trainval_type == "related_both":
+        nontest_indices={d.index for d in nontest_data}  
+        if active_args.initial_trainval_seed is  None:    
+                rand=random.randint(0+active_args.initial_trainval_size/2, len(nontest_indices)-active_args.initial_trainval_size/2)
+        else:
+                rand= active_args.initial_trainval_seed
+        nontest_data_pickle_list=list(nontest_indices)
+        rand_nontest_data_list=nontest_data_pickle_list[rand-int(active_args.initial_trainval_size/2):int(rand+active_args.initial_trainval_size/2)]
+        rand_nontest_data=set(rand_nontest_data_list)
+        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size/2},{len(nontest_data)-int(active_args.initial_trainval_size/2)})!"
+        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+        remaining_data = MoleculeDataset(
+                [d for d in nontest_data if d.index not in trainval_data]
+        )
+        save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+        )
+    elif active_args.initial_trainval_type == "related_random":
+        nontest_indices={d.index for d in nontest_data}  
+        if active_args.initial_trainval_seed is  None:    
+                rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices)-active_args.initial_trainval_size)
+        else:
+                rand= active_args.initial_trainval_seed
+        nontest_data_pickle_list=list(nontest_indices)
+        rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand+active_args.initial_trainval_size]
+        assert active_args.initial_trainval_size == len(rand_nontest_data_list), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)-active_args.initial_trainval_size})!"
+        trainval_data_rand=random.sample(rand_nontest_data_list,active_args.initial_trainval_size)
+        rand_nontest_data=set(trainval_data_rand)
+        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+        remaining_data = MoleculeDataset(
+                [d for d in nontest_data if d.index not in trainval_data]
+        )
+        save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+        )
+    elif active_args.initial_trainval_type == "random":       
         fraction_trainval = (
             active_args.initial_trainval_fraction * num_data / num_nontest
         )
@@ -797,11 +981,11 @@ def get_pred_results(
                 elif active_args.search_function == "evidential_aleatoric":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
-                    ] = float(line[j + "_evidential_aleatoric_var"])
+                    ] = float(line[j + "_evidential_aleatoric_uncal_var"])
                 elif active_args.search_function == "evidential_epistemic":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
-                    ] = float(line[j + "_evidential_epistemic_var"])
+                    ] = float(line[j + "_evidential_epistemic_uncal_var"])
                 if save_error:
                     whole_data[i].output[
                         j + f"_error_{active_args.train_sizes[iteration]}"
