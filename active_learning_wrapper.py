@@ -68,7 +68,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     test_fraction: float = 0.1  # This is the fraction of data used for test
     # if a separate test set is not provided.
     # initial_trainval_fraction: float = None
-    initial_trainval_size: int = None
+    initial_trainval_size: int = None # the number of data points in the initial trainval
     active_batch_size: int = None  # the number of data points added
     # to trainval in each cycle
     active_iterations_limit: int = None  # the max number of
@@ -76,9 +76,29 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     train_seed: int = 0 # seed for the initial training split
     test_seed: int = 0 # seed for the test split
     evidential_regularization: float = 0.0  # the regularization parameter for evidential training
-    initial_trainval_type: Literal["random", "related_random","related_both","related_high","related_low","related_min","related_max","related_mean"] = "random"
-    initial_trainval_seed: int = None
-    initial_trainval_fraction: float = None
+    initial_trainval_type: Literal[
+        "random", 
+        "related_random",
+        "related_both",
+        "related_high",
+        "related_low",
+        "related_min",
+        "related_max",
+        "related_mean",
+    ] = "random"
+    """
+    how to choose the initial trainval set.
+    "random" will choose the initial trainval set randomly
+    "related_random" will choose a random number and choose random data close to that number from nontest dataset
+    "related_both" will choose a random number and choose numbers before and after that random number from nontest dataset
+    "related_high" will choose a random number and choose numbers after that random number from nontest dataset
+    "related_low" will choose a random number and choose numbers before that random number from nontest dataset
+    "related_min" will choose the numbers with lowest value from nontest dataset
+    "related_max" will choose the numbers with highest value from nontest dataset
+    "related_mean" will choose the numbers with average value from nontest dataset
+    """
+    initial_trainval_seed: int = None # random number for choosing the initial trainval set
+    initial_trainval_fraction: float = None # the fraction of data in the initial trainval set
 
 
 def active_learning(active_args: ActiveArgs):
