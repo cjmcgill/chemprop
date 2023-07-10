@@ -22,6 +22,7 @@ def get_loss_func(args: TrainArgs) -> Callable:
             "bounded_mse": bounded_mse_loss,
             "mve": normal_mve,
             "evidential": evidential_loss,
+            "beta_nll": beta_loss,
         },
         "classification": {
             "binary_cross_entropy": nn.BCEWithLogitsLoss(reduction="none"),
@@ -368,4 +369,22 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
 
     return loss
 
-def beta-nll_loss()
+def beta_loss(pred_values, targets, beta):
+    """
+    Use the negative log likelihood function of a normal distribution as a loss function used for making
+    simultaneous predictions of the mean and error distribution variance simultaneously.
+
+    :param beta: a hyperparameter for how coupled the mean and variance are to each other with 0 being a default NLL function 
+
+    :param pred_values: Combined predictions of means and variances of shape(data, tasks*2).
+                        Means are first in dimension 1, followed by variances.
+    :return: A tensor loss value.
+    """
+    # Unpack combined prediction values
+    pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
+
+
+    return torch.log(2*np.pi*pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var) * (pred_var ** (2*beta))
+
+
+    

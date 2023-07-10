@@ -258,6 +258,8 @@ class TrainArgs(CommonArgs):
     """Type of dataset. This determines the default loss function used during training."""
     loss_function: Literal['mse', 'bounded_mse', 'binary_cross_entropy', 'cross_entropy', 'mcc', 'sid', 'wasserstein', 'mve', 'evidential', 'dirichlet'] = None
     """Choice of loss function. Loss functions are limited to compatible dataset types."""
+    beta: float = 0.5
+    """this is the coupling ocefficient that shows the relatability between the mean and uncertainty values"""
     multiclass_num_classes: int = 3
     """Number of classes when running multiclass classification."""
     separate_val_path: str = None
