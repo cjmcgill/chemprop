@@ -384,7 +384,12 @@ def beta_loss(pred_values, targets, beta = 0.5):
         # Unpack combined prediction values
     pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
 
-    return torch.log(2 * np.pi * pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var)*(pred_var ** (beta))
+    loss = 0.5 * ((targets - pred_means) ** 2 / pred_var + pred_var.log())
+
+    if beta > 0:
+        loss = loss * pred_var.detach() ** beta
+
+    return loss.sum(axis=-1)
 
 
 
