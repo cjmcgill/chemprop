@@ -208,7 +208,6 @@ def train(
             elif args.loss_function == "dirichlet":  # classification
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "beta_nll":
-                print(f"value of first pred {preds[0]}")
                 loss = loss_func(preds, targets, args.beta) * target_weights * data_weights * masks
             else:
                 loss = loss_func(preds, targets) * target_weights * data_weights * masks
