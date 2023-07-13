@@ -242,7 +242,6 @@ def normal_mve(pred_values, targets):
 
     return torch.log(2 * np.pi * pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var)
 
-
 # evidential classification
 def dirichlet_class_loss(alphas, target_labels, lam=0):
     """
@@ -369,7 +368,7 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
 
     return loss
 
-def beta_loss(pred_values, targets, beta):
+def beta_loss(pred_values, targets, beta = 0.5):
     """
     Use the negative log likelihood function of a normal distribution as a loss function used for making
     simultaneous predictions of the mean and error distribution variance simultaneously.
@@ -380,11 +379,14 @@ def beta_loss(pred_values, targets, beta):
                         Means are first in dimension 1, followed by variances.
     :return: A tensor loss value.
     """
-    # Unpack combined prediction values
+
+
+        # Unpack combined prediction values
     pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
 
+    return torch.log(2 * np.pi * pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var)*(pred_var ** (2*beta))
 
-    return torch.log(2*np.pi*pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var) * (pred_var ** (2*beta))
 
 
-    
+
+

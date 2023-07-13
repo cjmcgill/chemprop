@@ -169,7 +169,7 @@ def predict(
         else:
             batch_preds = batch_preds.data.cpu().numpy()
 
-            if model.loss_function == "mve":
+            if model.loss_function in ["mve", "beta_nll"]: # TODO split
                 batch_preds, batch_var = np.split(batch_preds, 2, axis=1)
             elif model.loss_function == "dirichlet":
                 if model.classification:
@@ -193,7 +193,7 @@ def predict(
             # Inverse scale if regression
             if scaler is not None:
                 batch_preds = scaler.inverse_transform(batch_preds)
-                if model.loss_function == "mve":
+                if model.loss_function in ["mve", "beta_nll"]: # TODO unscale variance
                     batch_var = batch_var * scaler.stds**2
                 elif model.loss_function == "evidential":
                     batch_betas = batch_betas * scaler.stds**2
@@ -201,7 +201,7 @@ def predict(
             # Collect vectors
             batch_preds = batch_preds.tolist()
             preds.extend(batch_preds)
-            if model.loss_function == "mve":
+            if model.loss_function in ["mve", "beta_nll"]: # TODO extend var
                 var.extend(batch_var.tolist())
             elif model.loss_function == "dirichlet" and model.classification:
                 alphas.extend(batch_alphas.tolist())
@@ -218,7 +218,7 @@ def predict(
         lambdas = [np.concatenate(x) for x in zip(*lambdas)]
 
     if return_unc_parameters:
-        if model.loss_function == "mve":
+        if model.loss_function in ["mve", "beta_nll"]: # TODO return unc
             return preds, var
         elif model.loss_function == "dirichlet":
             return preds, alphas

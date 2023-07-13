@@ -50,7 +50,7 @@ class MoleculeModel(nn.Module):
         self.relative_output_size = 1
         if self.multiclass:
             self.relative_output_size *= args.multiclass_num_classes
-        if self.loss_function == "mve":
+        if self.loss_function in ["mve","beta_nll"]: # TODO add any multi output loss functions here
             self.relative_output_size *= 2  # return means and variances
         if self.loss_function == "dirichlet" and self.classification:
             self.relative_output_size *= (
@@ -67,7 +67,7 @@ class MoleculeModel(nn.Module):
         if self.multiclass:
             self.multiclass_softmax = nn.Softmax(dim=2)
 
-        if self.loss_function in ["mve", "evidential", "dirichlet"]:
+        if self.loss_function in ["mve", "evidential", "dirichlet","beta_nll"]:
             self.softplus = nn.Softplus()
 
         self.create_encoder(args)
@@ -308,7 +308,7 @@ class MoleculeModel(nn.Module):
                 )  # to get probabilities during evaluation, but not during training when using CrossEntropyLoss
 
         # Modify multi-input loss functions
-        if self.loss_function == "mve":
+        if self.loss_function  == "mve": # TODO preprocess variances
             if self.is_atom_bond_targets:
                 outputs = []
                 for x in output:
@@ -320,6 +320,12 @@ class MoleculeModel(nn.Module):
                 means, variances = torch.split(output, output.shape[1] // 2, dim=1)
                 variances = self.softplus(variances)
                 output = torch.cat([means, variances], axis=1)
+        if self.loss_function == "beta_nll":
+            means, variances = torch.split(output, output.shape[1] // 2, dim=1)
+            variances = self.softplus(variances)
+            # beta = torch.tensor(TrainArgs.beta)
+            # beta = torch.unsqueeze(beta, dim= 0)
+            output = torch.cat([means, variances], axis = 1)
         if self.loss_function == "evidential":
             if self.is_atom_bond_targets:
                 outputs = []

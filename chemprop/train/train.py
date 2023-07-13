@@ -164,6 +164,8 @@ def train(
                     raise ValueError(f'Loss function "{args.loss_function}" is not supported with dataset type {args.dataset_type} in atomic/bond properties prediction.')
                 elif args.loss_function in ["binary_cross_entropy", "mse", "mve"]:
                     loss = loss_func(pred, target) * target_weight * data_weight * mask
+                elif args.loss_function == "beta_nll":
+                    loss = loss_func(pred, target, args.beta)
                 elif args.loss_function == "evidential":
                     loss = loss_func(pred, target, args.evidential_regularization) * target_weight * data_weight * mask
                 elif args.loss_function == "dirichlet" and args.dataset_type == "classification":
@@ -205,6 +207,9 @@ def train(
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "dirichlet":  # classification
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
+            elif args.loss_function == "beta_nll":
+                print(f"value of first pred {preds[0]}")
+                loss = loss_func(preds, targets, args.beta) * target_weights * data_weights * masks
             else:
                 loss = loss_func(preds, targets) * target_weights * data_weights * masks
 

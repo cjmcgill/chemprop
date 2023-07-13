@@ -319,7 +319,7 @@ class MVEPredictor(UncertaintyPredictor):
 
     def raise_argument_errors(self):
         super().raise_argument_errors()
-        if self.loss_function != "mve":
+        if self.loss_function != "mve": # TODO add to this list
             raise ValueError(
                 "In order to use mve uncertainty, trained models must have used mve loss function."
             )
