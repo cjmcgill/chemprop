@@ -10,10 +10,14 @@ from tap import Tap
 from tqdm import tqdm
 import numpy as np
 from chemprop.args import TrainArgs, PredictArgs
-from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data
+from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data, scaffold_split
 from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
 import random
+from rdkit import Chem
+from rdkit.Chem import AllChem
+import math
+
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
@@ -75,6 +79,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     # training iterations to go through
     train_seed: int = 0 # seed for the initial training split
     test_seed: int = 0 # seed for the test split
+    test_split_type: Literal["random", "scaffold","size"] = "random" # the type of test split
     evidential_regularization: float = 0.0  # the regularization parameter for evidential training
     initial_trainval_type: Literal[
         "random", 
@@ -85,6 +90,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
         "related_min",
         "related_max",
         "related_mean",
+        "morgan_fp",
     ] = "random"
     """
     how to choose the initial trainval set.
@@ -96,9 +102,11 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     "related_min" will choose the numbers with lowest value from nontest dataset
     "related_max" will choose the numbers with highest value from nontest dataset
     "related_mean" will choose the numbers with average value from nontest dataset
+    "morgan_fp" will choose a random molecule and choose molecules with highest morgan fingerprint similarities from nontest dataset
     """
     initial_trainval_seed: int = None # random number for choosing the initial trainval set
     initial_trainval_fraction: float = None # the fraction of data in the initial trainval set
+    moprganfp_similarity: Literal["tanimoto", "dice","cosine", "sokal", "russel", "kulczynski", "mcconnaughey"] = "tanimoto" # the similarity metric for morgan fingerprint
 
 
 def active_learning(active_args: ActiveArgs):
@@ -127,7 +135,7 @@ def active_learning(active_args: ActiveArgs):
     whole_data, nontest_data, test_data = get_test_split(
         active_args=active_args,
         save_test_nontest=False,
-        save_indices=True,
+        save_indices=True
     )
     trainval_data, remaining_data = initial_trainval_split(
         active_args=active_args,
@@ -321,7 +329,7 @@ def get_initial_train_args(
 
 
 def get_test_split(
-    active_args: ActiveArgs, save_test_nontest: bool = True, save_indices: bool = True
+    active_args: ActiveArgs,save_test_nontest: bool = True, save_indices: bool = True
 ) -> Tuple[MoleculeDataset]:
     data = get_data(
         path=active_args.data_path,
@@ -364,7 +372,7 @@ def get_test_split(
         for i, d in enumerate(tqdm(whole_data)):
             d.index = i
 
-    else:
+    elif active_args.test_split_type == "random":
         for i, d in enumerate(tqdm(data)):
             d.index = i
         sizes = (1 - active_args.test_fraction, active_args.test_fraction, 0)
@@ -375,6 +383,38 @@ def get_test_split(
             nontest_indices = {d.index for d in nontest_data}
             test_indices = {d.index for d in test_data}
         whole_data = data
+    elif active_args.test_split_type == "scaffold":
+        for i, d in enumerate(tqdm(data)):
+            d.index = i
+        sizes = (1 - active_args.test_fraction, active_args.test_fraction, 0)
+        nontest_data, test_data, _ = scaffold_split(
+            data=data, sizes=sizes,seed=active_args.test_seed,
+        )
+        if save_indices:
+            nontest_indices = {d.index for d in nontest_data}
+            test_indices = {d.index for d in test_data}
+        whole_data = data
+    elif active_args.test_split_type == "size":
+        whole_data_smiles = MoleculeDataset.smiles(data) #list of smiles
+        num_atoms=[]
+        for [smiles] in whole_data_smiles:
+            mol=Chem.MolFromSmiles(smiles)
+            num_atoms.append(mol.GetNumAtoms())        
+        sorted_smiles=sorted(zip(num_atoms, whole_data_smiles),reverse=True,)
+        test_smiles=[item[1] for item in sorted_smiles[0:math.ceil(len(whole_data_smiles)*active_args.test_fraction)]]
+        test_indices=[whole_data_smiles.index(value) for value in test_smiles] # get the indices of the test smiles
+        for i, d in enumerate(tqdm(data)):
+            d.index = i
+        nontest_indices = {i for i in range(len(whole_data_smiles)) if i not in test_indices} # get the indices of the nontest smiles
+        test_data = MoleculeDataset([data[i] for i in test_indices]) # get the test data
+        nontest_data = MoleculeDataset([data[i] for i in nontest_indices]) # get the nontest data
+        if save_indices:
+            nontest_indices = {d.index for d in nontest_data}
+            test_indices = {d.index for d in test_data}
+        whole_data = data
+        
+        
+
     for d in whole_data:
         d.output = dict()
         for s, smiles in enumerate(active_args.smiles_columns):
@@ -526,20 +566,22 @@ def initial_trainval_split(
 
 
     #  define related trainval set
+    if active_args.initial_trainval_type == "morgan_fp":
+        sorted_indices=morgan_fingerprint(nontest_data=nontest_data,active_args=active_args)
+        sorted_trainval_indices=sorted_indices[0:active_args.initial_trainval_size]
+        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        )  
     if active_args.initial_trainval_type == "related_max":
         target_nontest =MoleculeDataset.targets(nontest_data)
-        sorted_target=sorted(target_nontest,reverse=True)
-        frequency = {}
-        epsilon =1e-10
-        for i, sublist in enumerate(sorted_target):
-            for j, value in enumerate(sublist):
-                if value in frequency:
-                    frequency[value] += 1
-                    sublist[j] = value + frequency[value] * epsilon
-                else:
-                    frequency[value] = 0
-        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
-        sorted_trainval_indices=sorted_target_indices[0:active_args.initial_trainval_size]
+        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+        sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
+        test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
+        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
         trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
         remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
         save_dataset_indices(
@@ -549,20 +591,10 @@ def initial_trainval_split(
         )  
     elif active_args.initial_trainval_type == "related_mean":
         target_nontest =MoleculeDataset.targets(nontest_data)
-        sorted_target=sorted(target_nontest)
-        frequency = {}
-        epsilon =1e-10
-        for i, sublist in enumerate(sorted_target):
-            for j, value in enumerate(sublist):
-                if value in frequency:
-                    frequency[value] += 1
-                    sublist[j] = value + frequency[value] * epsilon
-                else:
-                    frequency[value] = 0
-        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
-        print((int(len(sorted_target_indices)/2))-int(active_args.initial_trainval_size/2))
-        print((int(len(sorted_target_indices)/2))+int(active_args.initial_trainval_size/2))
-        sorted_trainval_indices=sorted_target_indices[(int(len(sorted_target_indices)/2))-int(active_args.initial_trainval_size/2):(int(len(sorted_target_indices)/2))+int(active_args.initial_trainval_size/2)]
+        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+        sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
+        test_smiles=[item[1] for item in sorted_target[(int(len(smiles_nontest)/2))-int(active_args.initial_trainval_size/2):(int(len(smiles_nontest)/2))+int(active_args.initial_trainval_size/2)]]
+        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
         trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
         remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
         save_dataset_indices(
@@ -572,18 +604,10 @@ def initial_trainval_split(
         )
     elif active_args.initial_trainval_type == "related_min":
         target_nontest =MoleculeDataset.targets(nontest_data)
-        sorted_target=sorted(target_nontest)
-        frequency = {}
-        epsilon =1e-10
-        for i, sublist in enumerate(sorted_target):
-            for j, value in enumerate(sublist):
-                if value in frequency:
-                    frequency[value] += 1
-                    sublist[j] = value + frequency[value] * epsilon
-                else:
-                    frequency[value] = 0
-        sorted_target_indices=[target_nontest.index(sorted_target[i]) for i in range(len(sorted_target))]
-        sorted_trainval_indices=sorted_target_indices[0:active_args.initial_trainval_size]
+        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+        sorted_target=sorted(zip(target_nontest, smiles_nontest))
+        test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
+        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
         trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
         remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
         save_dataset_indices(
@@ -599,6 +623,7 @@ def initial_trainval_split(
         else:
                 rand= active_args.initial_trainval_seed
         nontest_data_pickle_list=list(nontest_indices)
+        random.shuffle(nontest_data_pickle_list)
         rand_nontest_data_list=nontest_data_pickle_list[rand:rand+active_args.initial_trainval_size]
         rand_nontest_data=set(rand_nontest_data_list)
         assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:(0,{len(nontest_data)-active_args.initial_trainval_size})!"
@@ -619,6 +644,7 @@ def initial_trainval_split(
         else:
                 rand= active_args.initial_trainval_seed
         nontest_data_pickle_list=list(nontest_indices)
+        random.shuffle(nontest_data_pickle_list)
         rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand]
         rand_nontest_data=set(rand_nontest_data_list)
         assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)})!"
@@ -638,6 +664,7 @@ def initial_trainval_split(
         else:
                 rand= active_args.initial_trainval_seed
         nontest_data_pickle_list=list(nontest_indices)
+        random.shuffle(nontest_data_pickle_list)
         rand_nontest_data_list=nontest_data_pickle_list[rand-int(active_args.initial_trainval_size/2):int(rand+active_args.initial_trainval_size/2)]
         rand_nontest_data=set(rand_nontest_data_list)
         assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size/2},{len(nontest_data)-int(active_args.initial_trainval_size/2)})!"
@@ -657,6 +684,7 @@ def initial_trainval_split(
         else:
                 rand= active_args.initial_trainval_seed
         nontest_data_pickle_list=list(nontest_indices)
+        random.shuffle(nontest_data_pickle_list)
         rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand+active_args.initial_trainval_size]
         assert active_args.initial_trainval_size == len(rand_nontest_data_list), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)-active_args.initial_trainval_size})!"
         trainval_data_rand=random.sample(rand_nontest_data_list,active_args.initial_trainval_size)
@@ -1335,6 +1363,47 @@ def save_evaluations(
                 ence[i],
             ]
             writer.writerow(new_row)
+
+def morgan_fingerprint(nontest_data:MoleculeDataset,active_args:ActiveArgs) -> Tuple[MoleculeDataset]:
+    nontest_smiles = nontest_data.smiles()
+    morgan_fps = []
+    rand=random.randint(0, len(nontest_smiles))
+    for [smiles] in nontest_smiles:
+        mol = Chem.MolFromSmiles(smiles)
+        fp = AllChem.GetMorganFingerprintAsBitVect(mol,useChirality=True, radius=5, nBits = 1024)  # 5 is the radius of the fingerprint
+        morgan_fps.append(fp)
+
+    similarities = []
+    for fp1 in morgan_fps:
+        if active_args.moprganfp_similarity == "cosine":
+            similarity_scores = [Chem.DataStructs.CosineSimilarity(fp1, fp2) for fp2 in morgan_fps] # measure similarity of each fingerptint with Tanimoto method 
+        elif active_args.moprganfp_similarity == "dice":
+            similarity_scores = [Chem.DataStructs.DiceSimilarity(fp1, fp2) for fp2 in morgan_fps]
+        elif active_args.moprganfp_similarity == "russel":
+            similarity_scores = [Chem.DataStructs.RusselSimilarity(fp1, fp2) for fp2 in morgan_fps]
+        elif active_args.moprganfp_similarity == "kulczynski":
+            similarity_scores = [Chem.DataStructs.KulczynskiSimilarity(fp1, fp2) for fp2 in morgan_fps]
+        elif active_args.moprganfp_similarity == "tanimoto":
+            similarity_scores = [Chem.DataStructs.TanimotoSimilarity(fp1, fp2) for fp2 in morgan_fps]
+        elif active_args.moprganfp_similarity == "sokal":
+            similarity_scores = [Chem.DataStructs.SokalSimilarity(fp1, fp2) for fp2 in morgan_fps]
+        elif active_args.moprganfp_similarity == "mcconnaughey":
+            similarity_scores = [Chem.DataStructs.McConnaugheySimilarity(fp1, fp2) for fp2 in morgan_fps]
+        similarities.append(similarity_scores)
+    similarities_array = np.array(similarities)
+    scores=similarities_array[:,rand] # choose similarity scores of random smiles
+    rounded_scores = [round(num, 9) for num in scores] # round to 9 decimal places
+    sorted_scores=sorted(zip(rounded_scores, nontest_smiles))
+    test_smiles=[item[1] for item in sorted_scores]
+    sorted_scores_indices=[nontest_smiles.index(value) for value in test_smiles] # get indices of sorted similarity scores
+    return sorted_scores_indices
+    
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
