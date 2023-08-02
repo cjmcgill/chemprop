@@ -81,6 +81,8 @@ class CommonArgs(Tap):
     """Turn off cuda (i.e., use CPU instead of GPU)."""
     gpu: int = None
     """Which GPU to use."""
+    ensemble_type: Literal['additive', 'multiplicative']
+    """Multiplicative is a conflation and additive is the average ensemble"""
     features_generator: List[str] = None
     """Method(s) of generating additional features."""
     features_path: List[str] = None

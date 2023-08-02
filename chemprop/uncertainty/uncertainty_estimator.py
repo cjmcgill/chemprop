@@ -23,6 +23,7 @@ class UncertaintyEstimator:
         dropout_sampling_size: int,
         individual_ensemble_predictions: bool,
         spectra_phase_mask: List[List[bool]],
+        ensemble_type: str,
     ):
         self.uncertainty_method = uncertainty_method
 
@@ -39,6 +40,7 @@ class UncertaintyEstimator:
             dropout_sampling_size=dropout_sampling_size,
             individual_ensemble_predictions=individual_ensemble_predictions,
             spectra_phase_mask=spectra_phase_mask,
+            ensemble_type = ensemble_type,
         )
         self.label = self.predictor.label
 

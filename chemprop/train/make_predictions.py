@@ -170,6 +170,7 @@ def predict_and_save(
         dropout_sampling_size=args.dropout_sampling_size,
         individual_ensemble_predictions=args.individual_ensemble_predictions,
         spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
+        ensemble_type = args.ensemble_type
     )
 
     preds, unc = estimator.calculate_uncertainty(
@@ -336,7 +337,7 @@ def predict_and_save(
 
 
 @timeit()
-def make_predictions(
+def dictions(
     args: PredictArgs,
     smiles: List[List[str]] = None,
     model_objects: Tuple[
@@ -503,4 +504,4 @@ def chemprop_predict() -> None:
 
     This is the entry point for the command line command :code:`chemprop_predict`.
     """
-    make_predictions(args=PredictArgs().parse_args())
+    dictions(args=PredictArgs().parse_args())

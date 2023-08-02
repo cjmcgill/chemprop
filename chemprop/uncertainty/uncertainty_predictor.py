@@ -9,7 +9,7 @@ from chemprop.models import MoleculeModel
 from chemprop.train.predict import predict
 from chemprop.spectra_utils import normalize_spectra, roundrobin_sid
 from chemprop.multitask_utils import reshape_values, reshape_individual_preds
-
+from chemprop.args import CommonArgs
 
 class UncertaintyPredictor(ABC):
     """
@@ -28,6 +28,7 @@ class UncertaintyPredictor(ABC):
         loss_function: str,
         uncertainty_dropout_p: float,
         dropout_sampling_size: int,
+        ensemble_type: str,
         individual_ensemble_predictions: bool = False,
         spectra_phase_mask: List[List[bool]] = None,
     ):
@@ -46,6 +47,7 @@ class UncertaintyPredictor(ABC):
         self.individual_ensemble_predictions = individual_ensemble_predictions
         self.spectra_phase_mask = spectra_phase_mask
         self.train_class_sizes = None
+        self.ensemble_type = ensemble_type
 
         self.raise_argument_errors()
         self.test_data_loader = test_data_loader
@@ -383,7 +385,7 @@ class MVEPredictor(UncertaintyPredictor):
                             individual_preds[j][:, :, i] = pred
                     else:
                         individual_preds = np.expand_dims(np.array(preds), axis=-1)
-            else:
+            elif self.ensemble_type == 'additive':
                 sum_preds += np.array(preds)
                 sum_squared += np.square(preds)
                 sum_vars += np.array(var)
@@ -396,6 +398,17 @@ class MVEPredictor(UncertaintyPredictor):
                         individual_preds = np.append(
                             individual_preds, np.expand_dims(preds, axis=-1), axis=-1
                         )
+            elif self.ensemble_type == 'multiplicative':
+               if i ==0:
+                   running_mean = torch.np(preds)
+                   running_var = np(var)
+               else:
+                   new_var = (np(var)*running_var) / (var + running_var)
+                   new_mean = (np(var)* running_mean + running_var * np(preds)) / (np(var)+ running_var)
+                   running_var = new_var
+                   running_mean = new_mean
+
+
 
         if model.is_atom_bond_targets:
             num_tasks = len(sum_preds)
@@ -432,10 +445,15 @@ class MVEPredictor(UncertaintyPredictor):
                     self.num_models,
                 )
         else:
-            uncal_preds = sum_preds / self.num_models
-            uncal_vars = (sum_vars + sum_squared) / self.num_models - np.square(
-                sum_preds / self.num_models
+            if self.ensemble_type == "additive":
+                uncal_preds = sum_preds / self.num_models
+                uncal_vars = (sum_vars + sum_squared) / self.num_models - np.square(
+                    sum_preds / self.num_models
             )
+            else:
+                uncal_preds = running_mean
+                uncal_var = running_var
+
             self.uncal_preds, self.uncal_vars = (
                 uncal_preds.tolist(),
                 uncal_vars.tolist(),
@@ -1263,6 +1281,7 @@ def build_uncertainty_predictor(
     dropout_sampling_size: int,
     individual_ensemble_predictions: bool,
     spectra_phase_mask: List[List[bool]],
+    ensemble_type: str,
 ) -> UncertaintyPredictor:
     """
     Function that chooses and returns the appropriate :class: `UncertaintyPredictor` subclass
@@ -1300,5 +1319,6 @@ def build_uncertainty_predictor(
             dropout_sampling_size=dropout_sampling_size,
             individual_ensemble_predictions=individual_ensemble_predictions,
             spectra_phase_mask=spectra_phase_mask,
+            ensemble_type = ensemble_type,
         )
     return predictor

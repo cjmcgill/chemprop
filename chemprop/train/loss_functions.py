@@ -15,8 +15,8 @@ def get_loss_func(args: TrainArgs) -> Callable:
     :return: A PyTorch loss function.
     """
 
-    # Nested dictionary of the form {dataset_type: {loss_function: loss_function callable}}
-    supported_loss_functions = {
+    # Nested dictionary of the form {dataset_type: {function: function callable}}
+    supported_functions = {
         "regression": {
             "mse": nn.MSELoss(reduction="none"),
             "bounded_mse": bounded_mse_loss,
@@ -41,20 +41,20 @@ def get_loss_func(args: TrainArgs) -> Callable:
     }
 
     # Error if no loss function supported
-    if args.dataset_type not in supported_loss_functions.keys():
+    if args.dataset_type not in supported_functions.keys():
         raise ValueError(f'Dataset type "{args.dataset_type}" not supported.')
 
-    # Return loss function if it is represented in the supported_loss_functions dictionary
-    loss_function_choices = supported_loss_functions.get(args.dataset_type, dict())
-    loss_function = loss_function_choices.get(args.loss_function)
+    # Return loss function if it is represented in the supported_functions dictionary
+    function_choices = supported_functions.get(args.dataset_type, dict())
+    function = function_choices.get(args.loss_function)
 
-    if loss_function is not None:
-        return loss_function
+    if function is not None:
+        return function
 
     else:
         raise ValueError(
-            f'Loss function "{args.loss_function}" not supported with dataset type {args.dataset_type}. \
-            Available options for that dataset type are {loss_function_choices.keys()}.'
+            f'Loss function "{args.function}" not supported with dataset type {args.dataset_type}. \
+            Available options for that dataset type are {function_choices.keys()}.'
         )
 
 
@@ -323,7 +323,7 @@ def dirichlet_common_loss(alphas, y_one_hot, lam=0):
     return loss
 
 
-# updated evidential regression loss (evidential_loss_new from Amini repo)
+# updated evidential regression loss (evidential_new from Amini repo)
 def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8, v_min: float = 1e-5):
     """
     Use Deep Evidential Regression negative log likelihood loss + evidential
