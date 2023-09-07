@@ -314,7 +314,7 @@ class MoleculeModel(nn.Module):
         # Modify multi-input loss functions
         if self.antoine:
                 antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
-                temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].to(self.device)
+                temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
         if self.loss_function == "mve":
             if self.is_atom_bond_targets:
