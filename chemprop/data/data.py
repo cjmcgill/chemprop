@@ -681,7 +681,7 @@ class MoleculeDataset(Dataset):
 
         return scaler
 
-    def normalize_targets(self) -> StandardScaler:
+    def normalize_targets(self, unscaled_target_indices) -> StandardScaler:
         """
         Normalizes the targets of the dataset using a :class:`~chemprop.data.StandardScaler`.
         The :class:`~chemprop.data.StandardScaler` subtracts the mean and divides by the standard deviation
@@ -691,6 +691,11 @@ class MoleculeDataset(Dataset):
         """
         targets = [d.raw_targets for d in self._data]
         scaler = StandardScaler().fit(targets)
+        if unscaled_target_indices is not None:
+            for i in unscaled_target_indices:
+                scaler.mean_[i] = 0
+                scaler.scale_[i] = 1
+                scaler.var_[i] = 1
         scaled_targets = scaler.transform(targets).tolist()
         self.set_targets(scaled_targets)
 

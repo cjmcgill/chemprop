@@ -172,7 +172,11 @@ def run_training(args: TrainArgs,
             scaler = None
             atom_bond_scaler = train_data.normalize_atom_bond_targets()
         else:
-            scaler = train_data.normalize_targets()
+            if args.vle is not None:
+                unscaled_target_indices = [0,1]
+            else:
+                unscaled_target_indices = None
+            scaler = train_data.normalize_targets(unscaled_target_indices)
             atom_bond_scaler = None
         args.spectra_phase_mask = None
     elif args.dataset_type == 'spectra':
