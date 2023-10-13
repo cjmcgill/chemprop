@@ -430,6 +430,11 @@ def get_data(path: str,
             features_data = np.array(phase_features)
     else:
         phase_features = None
+    
+    # If VLE model, add extra features for log10(Psat)
+    if args is not None and args.vle is not None:
+        if features_data is not None:
+            features_data = np.concatenate((features_data, np.log10(features_data[:, 3:6])), axis=1)
 
     # Load constraints
     if constraints_path is not None:

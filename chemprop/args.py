@@ -499,6 +499,9 @@ class TrainArgs(CommonArgs):
     """
     antoine: bool = False
     """"""
+    vle: Literal["basic", "activity", "wohl"] = None
+    """Which VLE model to use."""
+
 
     def __init__(self, *args, **kwargs) -> None:
         super(TrainArgs, self).__init__(*args, **kwargs)
@@ -626,6 +629,12 @@ class TrainArgs(CommonArgs):
         super(TrainArgs, self).process_args()
 
         global temp_save_dir  # Prevents the temporary directory from being deleted upon function return
+
+        # VLE model options
+        if self.vle is not None:
+            self.mpn_shared = True
+            self.no_features_scaling = True
+            self.number_of_molecules = 2
 
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:

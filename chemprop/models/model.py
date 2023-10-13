@@ -25,6 +25,7 @@ class MoleculeModel(nn.Module):
         self.multiclass = args.dataset_type == "multiclass"
         self.loss_function = args.loss_function
         self.antoine = args.antoine
+        self.vle = args.vle
         self.device = args.device
 
         if hasattr(args, "train_class_sizes"):
@@ -65,7 +66,7 @@ class MoleculeModel(nn.Module):
         if self.antoine:
             self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
 
-        if self.classification:
+        if self.classification or self.vle is not None:
             self.sigmoid = nn.Sigmoid()
 
         if self.multiclass:
@@ -311,11 +312,19 @@ class MoleculeModel(nn.Module):
                     output
                 )  # to get probabilities during evaluation, but not during training when using CrossEntropyLoss
 
+        # Apply post-processing for VLE models
+        if self.vle is not None:
+            logity_1, logity_2, log10P = torch.split(output, output.shape[1] // 3, dim=1)
+            y_1 = self.sigmoid(logity_1)
+            y_2 = self.sigmoid(logity_2)
+            P = 10**log10P
+            output = torch.cat([y_1, y_2, P], axis=1)
+
         # Modify multi-input loss functions
         if self.antoine:
-                antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
-                temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
-                output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+            antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
+            temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
+            output = antoine_a - (antoine_b / (antoine_c + temp_batch))
         if self.loss_function == "mve":
             if self.is_atom_bond_targets:
                 outputs = []
