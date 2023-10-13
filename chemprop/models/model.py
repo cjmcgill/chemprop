@@ -321,15 +321,15 @@ class MoleculeModel(nn.Module):
                 y_1 = self.sigmoid(logity_1)
                 y_2 = self.sigmoid(logity_2)
                 output = torch.cat([y_1, y_2, log10P], axis=1)
-            else:
+            elif self.vle == "activity":
                 x1_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
                 x2_batch = torch.from_numpy(np.stack(features_batch)).float()[:,1].unsqueeze(-1).to(self.device)
                 temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,2].unsqueeze(-1).to(self.device)
                 log10p1sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,3].unsqueeze(-1).to(self.device)
                 log10p2sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,4].unsqueeze(-1).to(self.device)
                 if self.vle == "activity":
-                    P1 = 10**log10p1sat_batch * x1_batch * output[:,0]
-                    P2 = 10**log10p2sat_batch * x2_batch * output[:,1]
+                    P1 = 10**log10p1sat_batch * x1_batch * torch.exp(output[:,0].unsqueeze(-1))
+                    P2 = 10**log10p2sat_batch * x2_batch * torch.exp(output[:,1].unsqueeze(-1))
                     P = P1 + P2
                     y_1 = P1 / P
                     y_2 = P2 / P
