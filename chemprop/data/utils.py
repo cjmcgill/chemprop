@@ -433,8 +433,12 @@ def get_data(path: str,
     
     # If VLE model, add extra features for log10(Psat)
     if args is not None and args.vle is not None:
-        if features_data is not None:
-            features_data = np.concatenate((features_data, np.log10(features_data[:, 3:6])), axis=1)
+        if features_data is not None: # x1, x2, T, log10P1sat, log10P2sat
+            xs = features_data[:, :2]
+            Psat = 10**features_data[:, 3:5]
+            PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
+            log10PRaoult = np.log10(PRaoult)
+            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1)
 
     # Load constraints
     if constraints_path is not None:

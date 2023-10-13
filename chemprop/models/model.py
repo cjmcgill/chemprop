@@ -65,6 +65,8 @@ class MoleculeModel(nn.Module):
             )
         if self.antoine:
             self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
+        elif self.vle == "activity":
+            self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
 
         if self.classification or self.vle is not None:
             self.sigmoid = nn.Sigmoid()
@@ -146,7 +148,7 @@ class MoleculeModel(nn.Module):
                 first_linear_dim=atom_first_linear_dim,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
                 num_layers=args.ffn_num_layers,
-                output_size=self.relative_output_size * args.num_tasks,
+                output_size=np.round(self.relative_output_size * args.num_tasks),
                 dropout=args.dropout,
                 activation=args.activation,
                 dataset_type=args.dataset_type,
@@ -314,11 +316,25 @@ class MoleculeModel(nn.Module):
 
         # Apply post-processing for VLE models
         if self.vle is not None:
-            logity_1, logity_2, log10P = torch.split(output, output.shape[1] // 3, dim=1)
-            y_1 = self.sigmoid(logity_1)
-            y_2 = self.sigmoid(logity_2)
-            P = 10**log10P
-            output = torch.cat([y_1, y_2, P], axis=1)
+            if self.vle == "basic":
+                logity_1, logity_2, log10P = torch.split(output, output.shape[1] // 3, dim=1)
+                y_1 = self.sigmoid(logity_1)
+                y_2 = self.sigmoid(logity_2)
+                output = torch.cat([y_1, y_2, log10P], axis=1)
+            else:
+                x1_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
+                x2_batch = torch.from_numpy(np.stack(features_batch)).float()[:,1].unsqueeze(-1).to(self.device)
+                temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,2].unsqueeze(-1).to(self.device)
+                log10p1sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,3].unsqueeze(-1).to(self.device)
+                log10p2sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,4].unsqueeze(-1).to(self.device)
+                if self.vle == "activity":
+                    P1 = 10**log10p1sat_batch * x1_batch * output[:,0]
+                    P2 = 10**log10p2sat_batch * x2_batch * output[:,1]
+                    P = P1 + P2
+                    y_1 = P1 / P
+                    y_2 = P2 / P
+                    log10P = torch.log10(P)
+                    output = torch.cat([y_1, y_2, log10P], axis=1)
 
         # Modify multi-input loss functions
         if self.antoine:
