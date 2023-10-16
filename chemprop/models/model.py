@@ -27,6 +27,7 @@ class MoleculeModel(nn.Module):
         self.antoine = args.antoine
         self.vle = args.vle
         self.device = args.device
+        self.hidden_size = args.hidden_size
 
         if hasattr(args, "train_class_sizes"):
             self.train_class_sizes = args.train_class_sizes
@@ -154,6 +155,17 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
+            if self.vle == "wohl":
+                self.wohl_q = build_ffn(
+                    first_linear_dim=atom_first_linear_dim,
+                    hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
+                    num_layers=args.ffn_num_layers,
+                    output_size=1,
+                    dropout=args.dropout,
+                    activation=args.activation,
+                    dataset_type=args.dataset_type,
+                    spectra_activation=args.spectra_activation,
+                )
 
         if args.checkpoint_frzn is not None:
             if args.frzn_ffn_layers > 0:
@@ -291,6 +303,11 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
             output = self.readout(encodings)
+            if self.vle == "wohl":
+                encoding_1 = encodings[:,:self.hidden_size]
+                encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
+                q_1 = self.wohl_q(encoding_1)
+                q_2 = self.wohl_q(encoding_2)
 
         # Don't apply sigmoid during training when using BCEWithLogitsLoss
         if (
@@ -321,20 +338,36 @@ class MoleculeModel(nn.Module):
                 y_1 = self.sigmoid(logity_1)
                 y_2 = self.sigmoid(logity_2)
                 output = torch.cat([y_1, y_2, log10P], axis=1)
-            elif self.vle == "activity":
-                x1_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
-                x2_batch = torch.from_numpy(np.stack(features_batch)).float()[:,1].unsqueeze(-1).to(self.device)
+            else:  # vle in ["activity", "wohl"]
+                x_1 = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
+                x_2 = torch.from_numpy(np.stack(features_batch)).float()[:,1].unsqueeze(-1).to(self.device)
                 temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,2].unsqueeze(-1).to(self.device)
-                log10p1sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,3].unsqueeze(-1).to(self.device)
-                log10p2sat_batch = torch.from_numpy(np.stack(features_batch)).float()[:,4].unsqueeze(-1).to(self.device)
+                log10p1sat = torch.from_numpy(np.stack(features_batch)).float()[:,3].unsqueeze(-1).to(self.device)
+                log10p2sat = torch.from_numpy(np.stack(features_batch)).float()[:,4].unsqueeze(-1).to(self.device)
                 if self.vle == "activity":
-                    P1 = 10**log10p1sat_batch * x1_batch * torch.exp(output[:,0].unsqueeze(-1))
-                    P2 = 10**log10p2sat_batch * x2_batch * torch.exp(output[:,1].unsqueeze(-1))
-                    P = P1 + P2
-                    y_1 = P1 / P
-                    y_2 = P2 / P
-                    log10P = torch.log10(P)
-                    output = torch.cat([y_1, y_2, log10P], axis=1)
+                    gamma_1 = torch.exp(output[:,0].unsqueeze(-1))
+                    gamma_2 = torch.exp(output[:,1].unsqueeze(-1))
+                else:  # vle == "wohl"
+                    a12, a112, a122 = torch.split(output, output.shape[1] // 3, dim=1)
+                    z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
+                    z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
+                    gamma_1 = torch.exp(
+                        2*a12*z_2**2*q_1 - 2*a12*z_1**2*q_1 + 2*a12*z_1*z_2*q_1
+                        + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**3*q_1 + 3*a112*z_1**2*z_2*q_1
+                        + 3*a122*z_2**3*q_1 - 6*a122*z_1**2*z_2*q_1 + 3*a122*z_1*z_2**2*q_1
+                    )
+                    gamma_2 = torch.exp(
+                        2*a12*z_1**2*q_2 - 2*a12*z_2**2*q_2 + 2*a12*z_2*z_1*q_2
+                        + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**3*q_2 + 3*a122*z_2**2*z_1*q_2
+                        + 3*a112*z_1**3*q_2 - 6*a112*z_2**2*z_1*q_2 + 3*a112*z_2*z_1**2*q_2
+                    )
+                P1 = 10**log10p1sat * x_1 * gamma_1
+                P2 = 10**log10p2sat * x_2 * gamma_2
+                P = P1 + P2
+                y_1 = P1 / P
+                y_2 = P2 / P
+                log10P = torch.log10(P)
+                output = torch.cat([y_1, y_2, log10P], axis=1)
 
         # Modify multi-input loss functions
         if self.antoine:
