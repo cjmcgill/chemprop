@@ -693,9 +693,8 @@ class MoleculeDataset(Dataset):
         scaler = StandardScaler().fit(targets)
         if unscaled_target_indices is not None:
             for i in unscaled_target_indices:
-                scaler.mean_[i] = 0
-                scaler.scale_[i] = 1
-                scaler.var_[i] = 1
+                scaler.means[i] = 0
+                scaler.stds[i] = 1
         scaled_targets = scaler.transform(targets).tolist()
         self.set_targets(scaled_targets)
 
