@@ -66,8 +66,12 @@ class MoleculeModel(nn.Module):
             )
         if self.antoine:
             self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
+        elif self.vle == "basic":
+            self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
+        elif self.vle == "wohl":
+            self.relative_output_size *= 1 # uses thre function parameters internally and returns three results
 
         if self.classification or self.vle is not None:
             self.sigmoid = nn.Sigmoid()
@@ -334,9 +338,9 @@ class MoleculeModel(nn.Module):
         # Apply post-processing for VLE models
         if self.vle is not None:
             if self.vle == "basic":
-                logity_1, logity_2, log10P = torch.split(output, output.shape[1] // 3, dim=1)
+                logity_1, log10P = torch.split(output, output.shape[1] // 3, dim=1)
                 y_1 = self.sigmoid(logity_1)
-                y_2 = self.sigmoid(logity_2)
+                y_2 = 1 - y_1
                 output = torch.cat([y_1, y_2, log10P], axis=1)
             else:  # vle in ["activity", "wohl"]
                 x_1 = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
