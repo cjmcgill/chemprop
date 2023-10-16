@@ -624,7 +624,8 @@ class MoleculeDataset(Dataset):
             if len(self._data) > 0 and self._data[0].bond_features is not None else None
 
     def normalize_features(self, scaler: StandardScaler = None, replace_nan_token: int = 0,
-                           scale_atom_descriptors: bool = False, scale_bond_descriptors: bool = False) -> StandardScaler:
+                           scale_atom_descriptors: bool = False, scale_bond_descriptors: bool = False,
+                           unscaled_features_indices=None) -> StandardScaler:
         """
         Normalizes the features of the dataset using a :class:`~chemprop.data.StandardScaler`.
 
@@ -662,6 +663,10 @@ class MoleculeDataset(Dataset):
                 features = np.vstack([d.raw_features for d in self._data])
             scaler = StandardScaler(replace_nan_token=replace_nan_token)
             scaler.fit(features)
+            if unscaled_features_indices is not None:
+                for i in unscaled_features_indices:
+                    scaler.means[i] = 0
+                    scaler.stds[i] = 1
 
         if scale_atom_descriptors and not self._data[0].atom_descriptors is None:
             for d in self._data:
@@ -681,7 +686,7 @@ class MoleculeDataset(Dataset):
 
         return scaler
 
-    def normalize_targets(self, unscaled_target_indices) -> StandardScaler:
+    def normalize_targets(self, unscaled_target_indices=None) -> StandardScaler:
         """
         Normalizes the targets of the dataset using a :class:`~chemprop.data.StandardScaler`.
         The :class:`~chemprop.data.StandardScaler` subtracts the mean and divides by the standard deviation

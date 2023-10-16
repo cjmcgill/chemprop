@@ -633,7 +633,6 @@ class TrainArgs(CommonArgs):
         # VLE model options
         if self.vle is not None:
             self.mpn_shared = True
-            self.no_features_scaling = True
             self.number_of_molecules = 2
 
         # Adapt the number of molecules for reaction_solvent mode

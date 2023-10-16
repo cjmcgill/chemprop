@@ -153,7 +153,7 @@ class MoleculeModel(nn.Module):
                 first_linear_dim=atom_first_linear_dim,
                 hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
                 num_layers=args.ffn_num_layers,
-                output_size=np.round(self.relative_output_size * args.num_tasks),
+                output_size=int(np.rint(self.relative_output_size * args.num_tasks)),
                 dropout=args.dropout,
                 activation=args.activation,
                 dataset_type=args.dataset_type,
@@ -161,7 +161,7 @@ class MoleculeModel(nn.Module):
             )
             if self.vle == "wohl":
                 self.wohl_q = build_ffn(
-                    first_linear_dim=atom_first_linear_dim,
+                    first_linear_dim=self.hidden_size,
                     hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
                     num_layers=args.ffn_num_layers,
                     output_size=1,
@@ -338,7 +338,7 @@ class MoleculeModel(nn.Module):
         # Apply post-processing for VLE models
         if self.vle is not None:
             if self.vle == "basic":
-                logity_1, log10P = torch.split(output, output.shape[1] // 3, dim=1)
+                logity_1, log10P = torch.split(output, output.shape[1] // 2, dim=1)
                 y_1 = self.sigmoid(logity_1)
                 y_2 = 1 - y_1
                 output = torch.cat([y_1, y_2, log10P], axis=1)
