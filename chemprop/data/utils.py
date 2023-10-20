@@ -805,6 +805,29 @@ def split_data(data: MoleculeDataset,
         test = [data[i] for i in test]
 
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
+    
+    elif split_type == "random_binary_pairs":
+        smiles_dict = defaultdict(set)
+        for i, smiles in enumerate(data.smiles()):
+            smiles_dict[set(smiles)].add(i)  # different from random with repeated smiles because it uses the whole set of molecules
+        index_sets = list(smiles_dict.values())
+        random.seed(seed)
+        random.shuffle(index_sets)
+        train, val, test = [], [], []
+        train_size = int(sizes[0] * len(data))
+        val_size = int(sizes[1] * len(data))
+        for index_set in index_sets:
+            if len(train)+len(index_set) <= train_size:
+                train += index_set
+            elif len(val) + len(index_set) <= val_size:
+                val += index_set
+            else:
+                test += index_set
+        train = [data[i] for i in train]
+        val = [data[i] for i in val]
+        test = [data[i] for i in test]
+
+        return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 
     elif split_type == 'random':
         indices = list(range(len(data)))
@@ -818,6 +841,7 @@ def split_data(data: MoleculeDataset,
         test = [data[i] for i in indices[train_val_size:]]
 
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
+
     elif split_type == 'molecular_weight':
         train_size, val_size, test_size = [int(size * len(data)) for size in sizes]
 
