@@ -666,7 +666,6 @@ def get_inequality_targets(path: str, target_columns: List[str] = None) -> List[
 
     return gt_targets, lt_targets
 
-
 def split_data(data: MoleculeDataset,
                split_type: str = 'random',
                sizes: Tuple[float, float, float] = (0.8, 0.1, 0.1),
@@ -815,6 +814,30 @@ def split_data(data: MoleculeDataset,
         test = [data[i] for i in test]
 
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
+    
+    elif split_type == "random_binary_pairs":
+        smiles_dict = defaultdict(set)
+        for i, smiles in enumerate(data.smiles()):
+            smiles.sort()
+            smiles_dict[tuple(smiles)].add(i)  # different from random with repeated smiles because it uses all the molecules not just the key
+        index_sets = list(smiles_dict.values())
+        random.seed(seed)
+        random.shuffle(index_sets)
+        train, val, test = [], [], []
+        train_size = int(sizes[0] * len(data))
+        val_size = int(sizes[1] * len(data))
+        for index_set in index_sets:
+            if len(train)+len(index_set) <= train_size:
+                train += index_set
+            elif len(val) + len(index_set) <= val_size:
+                val += index_set
+            else:
+                test += index_set
+        train = [data[i] for i in train]
+        val = [data[i] for i in val]
+        test = [data[i] for i in test]
+
+        return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 
     elif split_type == 'random':
         indices = list(range(len(data)))
@@ -829,6 +852,24 @@ def split_data(data: MoleculeDataset,
 
         return MoleculeDataset(train), MoleculeDataset(val), MoleculeDataset(test)
 
+    elif split_type == 'molecular_weight':
+        train_size, val_size, test_size = [int(size * len(data)) for size in sizes]
+
+        sorted_data = sorted(data._data, key=lambda x: x.max_molwt, reverse=False)
+        indices = list(range(len(sorted_data)))
+
+        train_end_idx = int(train_size)
+        val_end_idx = int(train_size + val_size)
+        train_indices = indices[:train_end_idx]
+        val_indices = indices[train_end_idx:val_end_idx]
+        test_indices = indices[val_end_idx:]
+
+        # Create MoleculeDataset for each split
+        train = MoleculeDataset([sorted_data[i] for i in train_indices])
+        val = MoleculeDataset([sorted_data[i] for i in val_indices])
+        test = MoleculeDataset([sorted_data[i] for i in test_indices])
+
+        return train, val, test
     else:
         raise ValueError(f'split_type "{split_type}" not supported.')
 

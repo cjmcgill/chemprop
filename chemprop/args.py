@@ -272,13 +272,13 @@ class TrainArgs(CommonArgs):
     """Path to weights for each molecule in the training data, affecting the relative weight of molecules in the loss function"""
     target_weights: List[float] = None
     """Weights associated with each target, affecting the relative weight of targets in the loss function. Must match the number of target columns."""
-    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles'] = 'random'
+    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles', 'molecular_weight', 'random_binary_pairs'] = 'random'
     """Method of splitting the data into train/val/test."""
     split_sizes: List[float] = None
     """Split proportions for train/validation/test sets."""
     split_key_molecule: int = 0
-    """The index of the key molecule used for splitting when multiple molecules are present and constrained split_type is used, like scaffold_balanced or random_with_repeated_smiles.
-       Note that this index begins with zero for the first molecule."""
+    """The index of the key molecule used for splitting when multiple molecules are present and constrained split_type is used based on a single molecule, like scaffold_balanced or random_with_repeated_smiles.
+       Note that this index begins with zero for the first molecule. Does not apply to random_binary_pairs."""
     num_folds: int = 1
     """Number of folds when performing cross validation."""
     folds_file: str = None
@@ -872,6 +872,9 @@ class TrainArgs(CommonArgs):
         if self.split_key_molecule >= self.number_of_molecules:
             raise ValueError('The index provided with the argument `--split_key_molecule` must be less than the number of molecules. Note that this index begins with 0 for the first molecule. ')
 
+        # constrain random_binary_pairs to only run with two molecules
+        if self.number_of_molecules != 2 and self.split_type == "random_binary_pairs":
+            raise ValueError('The argument `--split_type random_binary_pairs` can only be used with two molecules.')
 
 class PredictArgs(CommonArgs):
     """:class:`PredictArgs` includes :class:`CommonArgs` along with additional arguments used for predicting with a Chemprop model."""
