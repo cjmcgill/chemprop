@@ -310,8 +310,8 @@ class MoleculeModel(nn.Module):
             if self.vle == "wohl":
                 encoding_1 = encodings[:,:self.hidden_size]
                 encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
-                q_1 = self.wohl_q(encoding_1)
-                q_2 = self.wohl_q(encoding_2)
+                q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
+                q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
 
         # Don't apply sigmoid during training when using BCEWithLogitsLoss
         if (
