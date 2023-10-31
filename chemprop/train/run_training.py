@@ -129,7 +129,7 @@ def run_training(args: TrainArgs,
         if args.vle is not None:
             unscaled_features_indices = [0,1]
         else:
-            unscaled_target_indices = None
+            unscaled_features_indices = None
         features_scaler = train_data.normalize_features(replace_nan_token=0, unscaled_features_indices=unscaled_features_indices)
         val_data.normalize_features(features_scaler, unscaled_features_indices=unscaled_features_indices)
         test_data.normalize_features(features_scaler, unscaled_features_indices=unscaled_features_indices)
