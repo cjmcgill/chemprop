@@ -1,4 +1,5 @@
 from chemprop.train.make_predictions import make_predictions
+from chemprop.train.molecule_fingerprint import molecule_fingerprint
 import os
 import shutil
 import csv
@@ -9,7 +10,7 @@ from typing_extensions import Literal
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
-from chemprop.args import TrainArgs, PredictArgs
+from chemprop.args import TrainArgs, PredictArgs, FingerprintArgs
 from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data, scaffold_split
 from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
@@ -17,6 +18,8 @@ import random
 from rdkit import Chem
 from rdkit.Chem import AllChem
 import math
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
 
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
@@ -107,6 +110,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     initial_trainval_seed: int = None # random number for choosing the initial trainval set
     initial_trainval_fraction: float = None # the fraction of data in the initial trainval set
     moprganfp_similarity: Literal["tanimoto", "dice","cosine", "sokal", "russel", "kulczynski", "mcconnaughey"] = "tanimoto" # the similarity metric for morgan fingerprint
+    data_selection : Literal["uncertainty","kmeans"] = "uncertainty" # the method for selecting the data
 
 
 def active_learning(active_args: ActiveArgs):
@@ -144,6 +148,8 @@ def active_learning(active_args: ActiveArgs):
         save_data=False,
         save_indices=True,
     )
+    
+    # assert False
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
     print(active_args.train_sizes)
@@ -182,6 +188,7 @@ def active_learning(active_args: ActiveArgs):
                 save_full_indices=True,
                 iteration=i,
             )
+        
         save_datainputs(
             active_args=active_args,
             trainval_data=trainval_data,
@@ -252,23 +259,23 @@ def active_learning(active_args: ActiveArgs):
             ence,
             sharpness_root,
         )
-        cleanup_active_files(
-            active_args=active_args,
-            train_args=train_args,
-            remove_models=True,
-            remove_datainputs=False,
-            remove_preds=False,
-            remove_indices=False,
-        )
-        if not active_args.no_comparison_model:
-            cleanup_active_files2(
-                active_args=active_args,
-                train_args2=train_args2,
-                remove_models=True,
-                remove_datainputs=False,
-                remove_preds=False,
-                remove_indices=False,
-            )
+        # cleanup_active_files(
+        #     active_args=active_args,
+        #     train_args=train_args,
+        #     remove_models=True,
+        #     remove_datainputs=False,
+        #     remove_preds=False,
+        #     remove_indices=False,
+        # )
+        # if not active_args.no_comparison_model:
+        #     cleanup_active_files2(
+        #         active_args=active_args,
+        #         train_args2=train_args2,
+        #         remove_models=True,
+        #         remove_datainputs=False,
+        #         remove_preds=False,
+        #         remove_indices=False,
+        #     )
 
 
 # extract config settings from config json file
@@ -783,7 +790,6 @@ def save_dataset_indices(indices: Set[int], save_dir: str, filename_base: str) -
 
 # train args that will use to train the selection model
 def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
-    train_args.seed = 0
     train_args.save_dir = active_args.iter_save_dir
     train_args.data_path = os.path.join(active_args.run_save_dir, "trainval_full.csv")
     train_args.separate_test_path = os.path.join(
@@ -1130,33 +1136,62 @@ def update_trainval_split(
             + "requires more data than is in the remaining pool, "
             + f"{len(previous_remaining_data)}"
         )
-    if active_args.search_function != "random":  # only for a single task
-        priority_values = [
-            d.output[
-                active_args.task_names[0]
-                + f"_unc_{active_args.train_sizes[iteration-1]}"
+    if active_args.data_selection == "uncertainty":
+        if active_args.search_function != "random":  # only for a single task
+            priority_values = [
+                d.output[
+                    active_args.task_names[0]
+                    + f"_unc_{active_args.train_sizes[iteration-1]}"
+                ]
+                for d in previous_remaining_data
             ]
-            for d in previous_remaining_data
+        elif active_args.search_function == "random":
+            priority_values = [np.random.rand() for d in previous_remaining_data]
+        sorted_remaining_data = [
+            d
+            for _, d in sorted(
+                zip(priority_values, previous_remaining_data),
+                reverse=True,
+                key=lambda x: (x[0], np.random.rand()),
+            )
         ]
-    elif active_args.search_function == "random":
-        priority_values = [np.random.rand() for d in previous_remaining_data]
-    sorted_remaining_data = [
-        d
-        for _, d in sorted(
-            zip(priority_values, previous_remaining_data),
-            reverse=True,
-            key=lambda x: (x[0], np.random.rand()),
+        # print("--------------------------------------------------------")
+        # print(sorted_remaining_data[0])
+        # print("--------------------------------------------------------")
+        new_data = sorted_remaining_data[:num_additional]
+        new_data_indices = {d.index for d in new_data}
+        updated_trainval_data = MoleculeDataset(
+            [d for d in previous_trainval_data] + new_data
         )
-    ]
-    new_data = sorted_remaining_data[:num_additional]
-    new_data_indices = {d.index for d in new_data}
-    updated_trainval_data = MoleculeDataset(
-        [d for d in previous_trainval_data] + new_data
-    )
-    updated_remaining_data = MoleculeDataset(
-        [d for d in previous_remaining_data if d.index not in new_data_indices]
-    )
+        updated_remaining_data = MoleculeDataset(
+            [d for d in previous_remaining_data if d.index not in new_data_indices]
+        )
+        # target_nontest =MoleculeDataset.targets(nontest_data)
+        # smiles_=MoleculeDataset.smiles(previous_remaining_data) 
+        # sorted_target=sorted(zip(target_nontest, smiles_nontest))
+        # test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
+        # sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
+        # trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+        # remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
 
+    elif active_args.data_selection == "kmeans":
+        smiles=get_fingerprint(previous_remaining_data=previous_remaining_data,active_args=active_args,gpu=active_args.gpu,i=iteration)
+        smiles_=MoleculeDataset.smiles(previous_remaining_data) 
+        print("--------------------------------------------------------")
+        new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))]
+        new_data=MoleculeDataset([previous_remaining_data[i] for i in new_indices])
+        # old_indices=[smiles_.index(smiles_[i]) for i in range(len(smiles_))]
+        # indices=old_indices+new_indices
+        print("--------------------------------------------------------")
+        # assert False
+    
+        new_data_indices = new_indices
+        updated_trainval_data = MoleculeDataset(new_data + previous_trainval_data)
+        print("--------------------------------------------------------")
+        updated_remaining_data = MoleculeDataset(
+            [d for d in previous_remaining_data if d.index not in new_indices]
+        )
+    
     if save_new_indices:
         save_dataset_indices(
             indices=new_data_indices,
@@ -1400,11 +1435,131 @@ def morgan_fingerprint(nontest_data:MoleculeDataset,active_args:ActiveArgs) -> T
     return sorted_scores_indices
     
 
+def get_fingerprint(previous_remaining_data:MoleculeDataset,active_args:ActiveArgs,gpu,i) -> Tuple[MoleculeDataset]:
+    previous_remaining_data = previous_remaining_data.smiles() # it has to change to remaining data
+    argument_input = [
+        "--test_path",
+        os.path.join(
+            active_args.active_save_dir,
+            f"train{active_args.train_sizes[i-1]}","remaining_full.csv"),
+        "--checkpoint_dir",
+        os.path.join(
+            active_args.active_save_dir,
+            f"train{active_args.train_sizes[i-1]}",
+            f"selection{active_args.train_sizes[i-1]}"),
+        "--preds_path",
+        os.path.join(active_args.active_save_dir, "finger_print.csv"),
+
+    ]
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    fp_args = FingerprintArgs().parse_args(argument_input)
+    molecule_fingerprint(fp_args)
+    lists_per_row = []
+
+    with open(os.path.join(active_args.active_save_dir, "finger_print.csv")) as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)
+        for row in csvreader:
+            # Convert row values to a list of floating-point numbers
+            row_values = [float(cell) for cell in row[1:]]
+            lists_per_row.append(row_values)
+    lists_per_row=np.array(lists_per_row)
+    mean = np.mean(lists_per_row, axis=0)
+    std_dev = np.std(lists_per_row, axis=0)
+    standardized_data = (lists_per_row - mean) / std_dev
+
+    # replace nan with 0
+    standardized_data = [[0 if math.isnan(x) else x for x in sublist] for sublist in standardized_data]
+
+    kmeans = KMeans(n_clusters=active_args.active_batch_size)
+    cluster_labels = kmeans.fit_predict(standardized_data)
+    cluster1 = []
+    cluster2 = []
+    cluster3 = []
+    cluster_assignments = kmeans.predict(standardized_data)
+    distances = cdist(standardized_data, kmeans.cluster_centers_, 'euclidean')
+    closest_points_indices = [distances[:, i].argmin() for i in range(3)]
+    closest_points = [standardized_data[i] for i in closest_points_indices]
+    smiles_fp=list(zip(standardized_data,previous_remaining_data))
+    # print('----------------------')
+    # print(smiles_fp[0])
+    # print(closest_points[0] in smiles_fp[0])
+    # print('----------------------')
+    smiles=[]
+    adding_fp=[]
+    for idx, item in enumerate(smiles_fp):
+        if item[0] in closest_points:
+            smiles.append(item[1])
+            adding_fp.append(item[0])
+    with open(
+            os.path.join(active_args.iter_save_dir, "added_fp.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(adding_fp)
 
 
 
+    # Append lists to the respective clusters based on cluster labels
+    for i, label in enumerate(cluster_labels):
+        if label == 0:
+            cluster1.append(standardized_data[i])
+        elif label == 1:
+            cluster2.append(standardized_data[i])
+        else:
+            cluster3.append(standardized_data[i])
+    with open(
+            os.path.join(active_args.iter_save_dir, "adding_smiles.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(smiles)
+    with open(
+            os.path.join(active_args.iter_save_dir, "cluster1.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(cluster1)
+    with open(
+            os.path.join(active_args.iter_save_dir, "cluster2.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(cluster2)
+    with open(
+            os.path.join(active_args.iter_save_dir, "cluster3.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(cluster3)
 
+    return smiles
 
+###############################
+# import numpy as np
+
+# # Sample data as a NumPy array
+# data = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+
+# # Calculate the mean and standard deviation along each feature (column)
+# mean = np.mean(data, axis=0)
+# std_dev = np.std(data, axis=0)
+
+# # Standard scale the data by subtracting the mean and dividing by the standard deviation
+# standardized_data = (data - mean) / std_dev
+
+# print("Original Data:")
+# print(data)
+
+# print("Standardized Data (mean=0, std=1):")
+# print(standardized_data)
+###############################
 
 
 if __name__ == "__main__":
