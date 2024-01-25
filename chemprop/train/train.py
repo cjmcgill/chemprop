@@ -166,6 +166,8 @@ def train(
                     loss = loss_func(pred, target) * target_weight * data_weight * mask
                 elif args.loss_function == "beta_nll":
                     loss = loss_func(pred, target, args.beta)
+                elif args.loss_function == "stochastic":
+                    loss = loss_func(pred, target) * target_weight * data_weight * mask
                 elif args.loss_function == "evidential":
                     loss = loss_func(pred, target, args.evidential_regularization) * target_weight * data_weight * mask
                 elif args.loss_function == "dirichlet" and args.dataset_type == "classification":
@@ -209,6 +211,8 @@ def train(
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "beta_nll":
                 loss = loss_func(preds, targets, args.beta) * target_weights * data_weights * masks
+            elif args.loss_function == "stochastic":
+                loss = loss_func(preds, targets) * target_weights * data_weights * masks
             else:
                 loss = loss_func(preds, targets) * target_weights * data_weights * masks
 

@@ -37,7 +37,8 @@ def build_search_space(search_parameters: List[str], train_epochs: int = None) -
         "init_lr_ratio": hp.loguniform("init_lr_ratio", low=np.log(1e-4), high=0.),
         "linked_hidden_size": hp.quniform("linked_hidden_size", low=300, high=2400, q=100),
         "max_lr": hp.loguniform("max_lr", low=np.log(1e-6), high=np.log(1e-2)),
-        "warmup_epochs": hp.quniform("warmup_epochs", low=1, high=train_epochs // 2, q=1)
+        "warmup_epochs": hp.quniform("warmup_epochs", low=1, high=train_epochs // 2, q=1),
+        "beta": hp.quniform("beta", low=0.2, high=0.8, q=0.2)
     }
     space = {}
     for key in search_parameters:
@@ -226,6 +227,7 @@ def load_manual_trials(
         ("no_features_scaling", None),
         ("features_only", None),
         ("split_sizes", None),
+        ("beta", "beta")
     ]
 
     manual_trials_data = []

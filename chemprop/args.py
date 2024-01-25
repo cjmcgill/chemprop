@@ -81,7 +81,7 @@ class CommonArgs(Tap):
     """Turn off cuda (i.e., use CPU instead of GPU)."""
     gpu: int = None
     """Which GPU to use."""
-    ensemble_type: Literal['additive', 'multiplicative']
+    ensemble_type: Literal['additive', 'multiplicative'] = 'additive'
     """Multiplicative is a conflation and additive is the average ensemble"""
     features_generator: List[str] = None
     """Method(s) of generating additional features."""
@@ -258,7 +258,7 @@ class TrainArgs(CommonArgs):
     """Name of the columns to ignore when :code:`target_columns` is not provided."""
     dataset_type: Literal['regression', 'classification', 'multiclass', 'spectra']
     """Type of dataset. This determines the default loss function used during training."""
-    loss_function: Literal['mse', 'bounded_mse', 'binary_cross_entropy', 'cross_entropy', 'mcc', 'sid', 'wasserstein', 'mve', 'evidential', 'dirichlet','beta_nll'] = None
+    loss_function: Literal['mse', 'bounded_mse', 'binary_cross_entropy', 'cross_entropy', 'mcc', 'sid', 'wasserstein', 'mve', 'evidential', 'dirichlet','beta_nll','stochastic'] = None
     """Choice of loss function. Loss functions are limited to compatible dataset types."""
     beta: float = 0.5
     """this is the coupling ocefficient that shows the relatability between the mean and uncertainty values"""
@@ -1079,12 +1079,12 @@ class HyperoptArgs(TrainArgs):
             "basic", "learning_rate", "linked_hidden_size", "all",
             "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr", "hidden_size",
-            "init_lr", "max_lr", "warmup_epochs"
+            "init_lr", "max_lr", "warmup_epochs", "beta"
         ]
         supported_parameters = [
             "activation", "aggregation", "aggregation_norm", "batch_size", "depth",
             "dropout", "ffn_hidden_size", "ffn_num_layers", "final_lr_ratio", "hidden_size",
-            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs"
+            "init_lr_ratio", "linked_hidden_size", "max_lr", "warmup_epochs", "beta"
         ]
         unsupported_keywords = set(self.search_parameter_keywords) - set(supported_keywords)
         if len(unsupported_keywords) != 0:

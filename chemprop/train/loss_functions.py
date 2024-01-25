@@ -23,6 +23,7 @@ def get_loss_func(args: TrainArgs) -> Callable:
             "mve": normal_mve,
             "evidential": evidential_loss,
             "beta_nll": beta_loss,
+            "stochastic": stochastic_mve,
         },
         "classification": {
             "binary_cross_entropy": nn.BCEWithLogitsLoss(reduction="none"),
@@ -391,7 +392,15 @@ def beta_loss(pred_values, targets, beta = 0.5):
 
     return loss.sum(axis=-1)
 
-
+def stochastic_mve(pred_values, targets):
+    # Unpack combined prediction values
+    pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
+    # get random numbers from the normal (0,1) distribution
+    randoms = torch.randn_like(pred_means)
+    # apply noise scaled by the predicted var to get noisy predictions
+    preds = pred_means + randoms * torch.sqrt(pred_var)
+    # return mse loss of the noisy predictions
+    return nn.functional.mse_loss(preds, targets, reduction="none")
 
 
 

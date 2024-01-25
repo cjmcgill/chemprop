@@ -509,6 +509,7 @@ class MVEWeightingCalibrator(UncertaintyCalibrator):
                 "MVE Weighting is only useful when weighting between results in an ensemble. Only one model was provided."
             )
 
+
     def calibrate(self):
         uncal_preds = np.array(
             self.calibration_predictor.get_uncal_preds()

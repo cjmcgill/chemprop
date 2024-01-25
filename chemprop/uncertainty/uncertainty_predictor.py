@@ -321,9 +321,9 @@ class MVEPredictor(UncertaintyPredictor):
 
     def raise_argument_errors(self):
         super().raise_argument_errors()
-        if self.loss_function != "mve": # TODO add to this list
+        if self.loss_function not in ["mve","beta_nll","stochastic"]: # TODO add to this list
             raise ValueError(
-                "In order to use mve uncertainty, trained models must have used mve loss function."
+                "In order to use mve uncertainty, trained models must have used mve, beta_nll, or stochastic loss function."
             )
 
     def calculate_predictions(self):
@@ -361,52 +361,55 @@ class MVEPredictor(UncertaintyPredictor):
                 atom_bond_scaler=atom_bond_scaler,
                 return_unc_parameters=True,
             )
-            if i == 0:
-                sum_preds = np.array(preds)
-                sum_squared = np.square(preds)
-                sum_vars = np.array(var)
-                individual_vars = [var]
-                if self.individual_ensemble_predictions:
-                    if model.is_atom_bond_targets:
-                        n_atoms, n_bonds = (
-                            self.test_data.number_of_atoms,
-                            self.test_data.number_of_bonds,
-                        )
-                        individual_preds = []
-                        for _ in model.atom_targets:
-                            individual_preds.append(
-                                np.zeros((np.array(n_atoms).sum(), 1, self.num_models))
+            if self.ensemble_type == 'additive':
+                if i == 0:
+                    sum_preds = np.array(preds)
+                    sum_squared = np.square(preds)
+                    sum_vars = np.array(var)
+                    individual_vars = [var]
+                    if self.individual_ensemble_predictions:
+                        if model.is_atom_bond_targets:
+                            n_atoms, n_bonds = (
+                                self.test_data.number_of_atoms,
+                                self.test_data.number_of_bonds,
                             )
-                        for _ in model.bond_targets:
-                            individual_preds.append(
-                                np.zeros((np.array(n_bonds).sum(), 1, self.num_models))
+                            individual_preds = []
+                            for _ in model.atom_targets:
+                                individual_preds.append(
+                                    np.zeros((np.array(n_atoms).sum(), 1, self.num_models))
+                                )
+                            for _ in model.bond_targets:
+                                individual_preds.append(
+                                    np.zeros((np.array(n_bonds).sum(), 1, self.num_models))
+                                )
+                            for j, pred in enumerate(preds):
+                                individual_preds[j][:, :, i] = pred
+                        else:
+                            individual_preds = np.expand_dims(np.array(preds), axis=-1)
+                elif self.ensemble_type == 'additive':
+                    sum_preds += np.array(preds)
+                    sum_squared += np.square(preds)
+                    sum_vars += np.array(var)
+                    individual_vars.append(var)
+                    if self.individual_ensemble_predictions:
+                        if model.is_atom_bond_targets:
+                            for j, pred in enumerate(preds):
+                                individual_preds[j][:, :, i] = pred
+                        else:
+                            individual_preds = np.append(
+                                individual_preds, np.expand_dims(preds, axis=-1), axis=-1
                             )
-                        for j, pred in enumerate(preds):
-                            individual_preds[j][:, :, i] = pred
-                    else:
-                        individual_preds = np.expand_dims(np.array(preds), axis=-1)
-            elif self.ensemble_type == 'additive':
-                sum_preds += np.array(preds)
-                sum_squared += np.square(preds)
-                sum_vars += np.array(var)
-                individual_vars.append(var)
-                if self.individual_ensemble_predictions:
-                    if model.is_atom_bond_targets:
-                        for j, pred in enumerate(preds):
-                            individual_preds[j][:, :, i] = pred
-                    else:
-                        individual_preds = np.append(
-                            individual_preds, np.expand_dims(preds, axis=-1), axis=-1
-                        )
             elif self.ensemble_type == 'multiplicative':
                if i ==0:
-                   running_mean = torch.np(preds)
-                   running_var = np(var)
+                   running_mean = np.array(preds)
+                   running_var = np.array(var)
                else:
-                   new_var = (np(var)*running_var) / (var + running_var)
-                   new_mean = (np(var)* running_mean + running_var * np(preds)) / (np(var)+ running_var)
+                   new_var = (np.array(var)*running_var) / (var + running_var)
+                   new_mean = (np.array(var)* running_mean + running_var * np.array(preds)) / (np.array(var)+ running_var)
                    running_var = new_var
                    running_mean = new_mean
+            else:
+                raise NotImplementedError("The only supported ensemble types are additive and multiplicative")
 
 
 
@@ -450,17 +453,18 @@ class MVEPredictor(UncertaintyPredictor):
                 uncal_vars = (sum_vars + sum_squared) / self.num_models - np.square(
                     sum_preds / self.num_models
             )
+                self.individual_vars = individual_vars
             else:
                 uncal_preds = running_mean
-                uncal_var = running_var
+                uncal_vars = running_var
 
             self.uncal_preds, self.uncal_vars = (
                 uncal_preds.tolist(),
                 uncal_vars.tolist(),
             )
-            self.individual_vars = individual_vars
             if self.individual_ensemble_predictions:
                 self.individual_preds = individual_preds.tolist()
+
 
     def get_uncal_output(self):
         return self.uncal_vars
