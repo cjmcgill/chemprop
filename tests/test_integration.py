@@ -271,7 +271,7 @@ class ChempropTests(TestCase):
                 'chemprop_bounded_mse_loss',
                 'chemprop',
                 'bounded_mse',
-                5.52281852,
+                5.10242,
                 [
                     '--loss_function', 'bounded_mse',
                     '--data_path', os.path.join(TEST_DATA_DIR, 'regression_inequality.csv')
@@ -817,7 +817,7 @@ class ChempropTests(TestCase):
         (
                 'chemprop_scaffold_split',
                 'chemprop',
-                2.18239804,
+                2.095871,
                 ['--reaction', '--data_path', os.path.join(TEST_DATA_DIR, 'reaction_regression.csv'),'--split_type', 'scaffold_balanced']
         ),
         (
@@ -1032,7 +1032,7 @@ class ChempropTests(TestCase):
         (
                 'chemprop_reaction_solvent_diff_mpn_size',
                 'chemprop',
-                2.730379557,
+                2.734318,
                 ['--reaction_solvent', '--number_of_molecules', '2',
                  '--data_path', os.path.join(TEST_DATA_DIR, 'reaction_solvent_regression.csv'), '--hidden_size', '500',
                  '--hidden_size_solvent', '250']

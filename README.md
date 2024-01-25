@@ -1,21 +1,30 @@
-![ChemProp Logo](docs/source/_static/images/chemprop_logo.svg)
-# Molecular Property Prediction
+![ChemProp Logo](logo/chemprop_logo.svg)
+# Chemprop
 
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/chemprop)](https://badge.fury.io/py/chemprop)
 [![PyPI version](https://badge.fury.io/py/chemprop.svg)](https://badge.fury.io/py/chemprop)
 [![Build Status](https://github.com/chemprop/chemprop/workflows/tests/badge.svg)](https://github.com/chemprop/chemprop)
 
-This repository contains message passing neural networks for molecular property prediction as described in the paper [Analyzing Learned Molecular Representations for Property Prediction](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00237) and as used in the paper [A Deep Learning Approach to Antibiotic Discovery](https://www.cell.com/cell/fulltext/S0092-8674(20)30102-1) for molecules and [Machine Learning of Reaction Properties via Learned Representations of the Condensed Graph of Reaction](https://doi.org/10.1021/acs.jcim.1c00975) for reactions.
+Chemprop is a repository containing message passing neural networks for molecular property prediction.
+
+**References**: Please cite the appropriate papers if Chemprop is helpful to your research.
+
+- Chemprop was initially described in the papers [Analyzing Learned Molecular Representations for Property Prediction](https://pubs.acs.org/doi/abs/10.1021/acs.jcim.9b00237) for molecules and [Machine Learning of Reaction Properties via Learned Representations of the Condensed Graph of Reaction](https://doi.org/10.1021/acs.jcim.1c00975) for reactions.
+- The interpretation functionality is based on the paper [Multi-Objective Molecule Generation using Interpretable Substructures](https://arxiv.org/abs/2002.03244).
+- Chemprop now has its own dedicated manuscript that describes and benchmarks it in more detail: [Chemprop: A Machine Learning Package for Chemical Property Prediction](https://doi.org/10.1021/acs.jcim.3c01250).
+
+**Selected Applications**: Chemprop has been successfully used in the following works.
+
+- [A Deep Learning Approach to Antibiotic Discovery](https://www.cell.com/cell/fulltext/S0092-8674(20)30102-1) - _Cell_ (2020): Chemprop was used to predict antibiotic activity against _E. coli_, leading to the discovery of [Halicin](https://en.wikipedia.org/wiki/Halicin), a novel antibiotic candidate. Model checkpoints are availabile on [Zenodo](https://doi.org/10.5281/zenodo.6527882).
+- [Discovery of a structural class of antibiotics with explainable deep learning](https://www.nature.com/articles/s41586-023-06887-8) - _Nature_ (2023): Identified a structural class of antibiotics selective against methicillin-resistant _S. aureus_ (MRSA) and vancomycin-resistant enterococci using ensembles of Chemprop models, and explained results using Chemprop's interpret method.
+- [ADMET-AI: A machine learning ADMET platform for evaluation of large-scale chemical libraries](https://www.biorxiv.org/content/10.1101/2023.12.28.573531v1): Chemprop was trained on 41 absorption, distribution, metabolism, excretion, and toxicity (ADMET) datasets from the [Therapeutics Data Commons](https://tdcommons.ai). The Chemprop models in ADMET-AI are available both as a web server at [admet.ai.greenstonebio.com](https://admet.ai.greenstonebio.com) and as a Python package at [github.com/swansonk14/admet_ai](https://github.com/swansonk14/admet_ai). 
+- A more extensive list of successful Chemprop applications is given in our [2023 paper](https://doi.org/10.1021/acs.jcim.3c01250)
 
 **Documentation:** Full documentation of Chemprop is available at https://chemprop.readthedocs.io/en/latest/.
 
-**Website:** A web prediction interface with some trained Chemprop models is available at [chemprop.csail.mit.edu](http://chemprop.csail.mit.edu).
+**Tutorial:** These [slides](https://docs.google.com/presentation/d/14pbd9LTXzfPSJHyXYkfLxnK8Q80LhVnjImg8a3WqCRM/edit?usp=sharing) provide a Chemprop tutorial and highlight additions as of April 28th, 2020.
 
-**Tutorial:** These [slides](https://docs.google.com/presentation/d/14pbd9LTXzfPSJHyXYkfLxnK8Q80LhVnjImg8a3WqCRM/edit?usp=sharing) provide a Chemprop tutorial and highlight recent additions as of April 28th, 2020.
-
-## COVID-19 Update
-
-Please see [aicures.mit.edu](https://aicures.mit.edu) and the associated [data GitHub repo](https://github.com/yangkevin2/coronavirus_data) for information about our recent efforts to use Chemprop to identify drug candidates for treating COVID-19.
+**License:** Chemprop is free to use under the [MIT License](LICENSE.txt). The Chemprop logo is free to use under [CCO 1.0](logo/LICENSE.txt).
 
 ## Table of Contents
 
@@ -26,7 +35,6 @@ Please see [aicures.mit.edu](https://aicures.mit.edu) and the associated [data G
   * [Docker](#docker)
 - [Web Interface](#web-interface)
 - [Within Python](#within-python)
-- [Reproducibility](#reproducibility)
 - [Data](#data)
 - [Training](#training)
   * [Train/Validation/Test Splits](#trainvalidationtest-splits)
@@ -74,7 +82,9 @@ Chemprop can either be installed from PyPi via pip or from source (i.e., directl
 
 Both options require conda, so first install Miniconda from [https://conda.io/miniconda.html](https://conda.io/miniconda.html).
 
-Then proceed to either option below to complete the installation. Note that on machines with GPUs, you may need to manually install a GPU-enabled version of PyTorch by following the instructions [here](https://pytorch.org/get-started/locally/).
+Then proceed to either option below to complete the installation. If installing the environment with conda seems to be taking too long, you can also try running `conda install -c conda-forge mamba` and then replacing `conda` with `mamba` in each of the steps below.
+
+**Note for machines with GPUs:** You may need to manually install a GPU-enabled version of PyTorch by following the instructions [here](https://pytorch.org/get-started/locally/). If you're encountering issues with Chemprop not using a GPU on your system after following the instructions below, check which version of PyTorch you have installed in your environment using `conda list | grep torch` or similar. If the PyTorch line includes `cpu`, please uninstall it using `conda remove pytorch` and reinstall a GPU-enabled version using the instructions at the link above.
 
 ### Option 1: Installing from PyPi
 
@@ -187,7 +197,7 @@ Notes:
 Our code supports several methods of splitting data into train, validation, and test sets.
 
 * **Random.** By default, the data will be split randomly into train, validation, and test sets.
-* **Scaffold.** Alternatively, the data can be split by molecular scaffold so that the same scaffold never appears in more than one split. This can be specified by adding `--split_type scaffold_balanced`.
+* **Scaffold.** Alternatively, the data can be split by molecular scaffold so that the same scaffold never appears in more than one split. This can be specified by adding `--split_type scaffold_balanced`. Note that the atom-mapped numbers for atom-mapped SMILES will be removed before computing the Bemis-Murcko scaffold.
 * **k-Fold Cross-Validation.** A split type specified with `--split_type cv` intended for use when training with cross-validation. The data are split randomly into k groups of equal size, where k is the number of cross-validation folds specified with `--num_folds <k>`. Each group is used once as the test set and once as the validation set in training the k folds of the model. Alternatively, the option `--split_type cv-no-test` can be used to train without a test splits.
 * **Random With Repeated SMILES.** Some datasets have multiple entries with the same SMILES. To constrain splitting so the repeated SMILES are in the same split, use the argument `--split_type random_with_repeated_smiles`.
 * **Separate val/test.** If you have separate data files you would like to use as the validation or test set, you can specify them with `--separate_val_path <val_path>` and/or `--separate_test_path <test_path>`. If both are provided, then the data specified by `--data_path` is used entirely as the training data. If only one separate path is provided, the `--data_path` data is split between train data and either val or test data, whichever is not provided separately.
@@ -211,7 +221,7 @@ The regression loss functions `mve` and `evidential` function by minimizing the 
 
 Metrics are used to evaluate the success of the model against the test set as the final model score and to determine the optimal epoch to save the model at based on the validation set. The primary metric used for both purposes is selected with the argument `--metric <metric>` and additional metrics for test set score only can be added with `--extra_metrics <metric1> <metric2> ...`. Supported metrics are dependent on the dataset type. Unlike loss functions, metrics do not have to be differentiable.
 * **Regression.** rmse (default), mae, mse, r2, bounded_rmse, bounded_mae, bounded_mse (default if bounded_mse is loss function).
-* **Classification.** auc (default), prc-auc, accuracy, binary_cross_entropy, f1, mcc.
+* **Classification.** auc (default), prc-auc, accuracy, binary_cross_entropy, f1, mcc, recall, precision and balanced accuracy.
 * **Multiclass.** cross_entropy (default), accuracy, f1, mcc.
 * **Spectra.** sid (default), wasserstein.
 
@@ -394,11 +404,14 @@ The uncertainty of predictions made in Chemprop can be estimated by several diff
 
 Uncertainty predictions may be calibrated to improve their performance on new predictions. Calibration methods are selected using `--calibration_method <method>`, options provided below. An additional dataset to use in calibration is provided through `--calibration_path <path>`, along with necessary features like `--calibration_features_path <path>`. As with the data used in training, calibration data for multitask models are allowed to have gaps and missing targets in the data.
 
-**Regression** Calibrated regression outputs can be in the form of a standard deviation or an interval, as specified with the argument `--regression_calibrator_metric <"stdev" or "interval">`. The interval can be set using `--calibration_interval_percentile <float>` in the range (1,100).
+**Regression** 
+
+Calibrated regression outputs can be in the form of a standard deviation or an interval, as specified with the argument `--regression_calibrator_metric <"stdev" or "interval">`. The interval can be set using `--calibration_interval_percentile <float>` in the range (1,100).
 * `zscaling` Assumes that errors are normally distributed according to the estimated variance for each prediction. Applies a constant multiple to all stdev or interval outputs in order to minimize the negative log likelihood for the normal distributions. (https://arxiv.org/abs/1905.11659)
 * `tscaling` Similar to zscaling. Assumes that the errors are normally distributed, but accounts for the  size and uncertainty in the sample variance by using a sample-size reduced t-distribution in the negative log likelihood. Works best when errors are mostly due to variability between model instances and not dataset noise or model bias.
 * `zelikman_interval` Assumes that the error distribution is the same for each prediction but scaled by the uncalibrated standard deviation for each. Multiplies the uncalibrated standard deviation by a factor necessary to cover the specified interval of the calibration set. Does not assume a Gaussian distribution. Intended for use with intervals but can return a stdev as well. (https://arxiv.org/abs/2005.12496)
-* `mve_weighting` For use with s of models trained with mve or evidential loss function. Uses a weighted average of the predicted variances to achieve a minimum negative log likelihood of predictions. (https://doi.org/10.1186/s13321-021-00551-x)
+* `mve_weighting` For use with ensembles of models trained with mve or evidential loss function. Uses a weighted average of the predicted variances to achieve a minimum negative log likelihood of predictions. (https://doi.org/10.1186/s13321-021-00551-x)
+
 **Classification**
 * `platt` Uses a linear scaling before the sigmoid function in prediction to minimize the negative log likelihood of the predictions. If the model checkpoint was generated after Chemprop v1.5.0, then a Bayesian correction is applied to account for the class balance in the training set during prediction. Implemented for classification but not multiclass datasets. (https://arxiv.org/abs/1706.04599)
 * `isotonic` Fits an isotonic regression model to the predictions. Prediction outputs are transformed using a stepped histogram-style to match the empirical probability observed in the calibration data. Number and size of the histogram bins are procedurally decided. Histogram bins are wider in the regions of the model output that are less reliable in ordering confidence. Implemented for both classification and multiclass datasets. (https://arxiv.org/abs/1706.04599)

@@ -16,7 +16,8 @@ from chemprop.data import set_cache_mol, empty_cache
 from chemprop.features import get_available_features_generators
 
 
-Metric = Literal['auc', 'prc-auc', 'rmse', 'mae', 'mse', 'r2', 'accuracy', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'f1', 'mcc', 'bounded_rmse', 'bounded_mae', 'bounded_mse']
+Metric = Literal['auc', 'prc-auc', 'rmse', 'mae', 'mse', 'r2', 'accuracy', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'f1', 'mcc', 'bounded_rmse', 'bounded_mae', 'bounded_mse',
+                'recall', 'precision','balanced_accuracy']
 
 
 def get_checkpoint_paths(checkpoint_path: Optional[str] = None,
@@ -132,6 +133,8 @@ class CommonArgs(Tap):
         self._bond_features_size = 0
         self._atom_descriptors_size = 0
         self._bond_descriptors_size = 0
+        self._atom_constraints = []
+        self._bond_constraints = []
 
     @property
     def device(self) -> torch.device:
@@ -274,7 +277,7 @@ class TrainArgs(CommonArgs):
     """Path to weights for each molecule in the training data, affecting the relative weight of molecules in the loss function"""
     target_weights: List[float] = None
     """Weights associated with each target, affecting the relative weight of targets in the loss function. Must match the number of target columns."""
-    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles'] = 'random'
+    split_type: Literal['random', 'scaffold_balanced', 'predetermined', 'crossval', 'cv', 'cv-no-test', 'index_predetermined', 'random_with_repeated_smiles', 'molecular_weight'] = 'random'
     """Method of splitting the data into train/val/test."""
     split_sizes: List[float] = None
     """Split proportions for train/validation/test sets."""
@@ -602,23 +605,25 @@ class TrainArgs(CommonArgs):
         A list of booleans indicating whether constraints applied to output of atomic properties.
         """
         if self.is_atom_bond_targets and self.constraints_path:
-            header = chemprop.data.utils.get_header(self.constraints_path)
-            atom_constraints = [target in header for target in self.atom_targets]
+            if not self._atom_constraints:
+                header = chemprop.data.utils.get_header(self.constraints_path)
+                self._atom_constraints = [target in header for target in self.atom_targets]
         else:
-            atom_constraints = [False] * len(self.atom_targets)
-        return atom_constraints
-    
+            self._atom_constraints = [False] * len(self.atom_targets)
+        return self._atom_constraints
+
     @property
     def bond_constraints(self) -> List[bool]:
         """
         A list of booleans indicating whether constraints applied to output of bond properties.
         """
         if self.is_atom_bond_targets and self.constraints_path:
-            header = chemprop.data.utils.get_header(self.constraints_path)
-            bond_constraints = [target in header for target in self.bond_targets]
+            if not self._bond_constraints:
+                header = chemprop.data.utils.get_header(self.constraints_path)
+                self._bond_constraints = [target in header for target in self.bond_targets]
         else:
-            bond_constraints = [False] * len(self.bond_targets)
-        return bond_constraints
+            self._bond_constraints = [False] * len(self.bond_targets)
+        return self._bond_constraints
 
     def process_args(self) -> None:
         super(TrainArgs, self).process_args()
@@ -708,7 +713,7 @@ class TrainArgs(CommonArgs):
                              f'Please only include it once.')
 
         for metric in self.metrics:
-            if not any([(self.dataset_type == 'classification' and metric in ['auc', 'prc-auc', 'accuracy', 'binary_cross_entropy', 'f1', 'mcc']),
+            if not any([(self.dataset_type == 'classification' and metric in ['auc', 'prc-auc', 'accuracy', 'binary_cross_entropy', 'f1', 'mcc', 'recall', 'precision', 'balanced_accuracy', 'confusion_matrix']),
                         (self.dataset_type == 'regression' and metric in ['rmse', 'mae', 'mse', 'r2', 'bounded_rmse', 'bounded_mae', 'bounded_mse']),
                         (self.dataset_type == 'multiclass' and metric in ['cross_entropy', 'accuracy', 'f1', 'mcc']),
                         (self.dataset_type == 'spectra' and metric in ['sid', 'wasserstein'])]):
@@ -886,6 +891,7 @@ class PredictArgs(CommonArgs):
         'classification',
         'dropout',
         'spectra_roundrobin',
+        'dirichlet',
     ] = None
     """The method of calculating uncertainty."""
     calibration_method: Literal['zscaling', 'tscaling', 'zelikman_interval', 'mve_weighting', 'platt', 'isotonic'] = None

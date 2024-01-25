@@ -247,8 +247,11 @@ def predict_and_save(
                 for i in range(args.multiclass_num_classes)
             ]
             num_tasks = num_tasks * args.multiclass_num_classes
+
         if args.uncertainty_method == "spectra_roundrobin":
             num_unc_tasks = 1
+        elif args.uncertainty_method == "dirichlet" and args.dataset_type == "multiclass":
+            num_unc_tasks = num_tasks // args.multiclass_num_classes # dirichlet only returns an uncertainty for each task rather than each class
         else:
             num_unc_tasks = num_tasks
 
@@ -301,7 +304,7 @@ def predict_and_save(
                         datapoint.row[pred_name + f"_model_{idx}"] = pred
 
         # Save
-        with open(args.preds_path, 'w') as f:
+        with open(args.preds_path, 'w', newline="") as f:
             writer = csv.DictWriter(f, fieldnames=full_data[0].row.keys())
             writer.writeheader()
 
@@ -312,7 +315,7 @@ def predict_and_save(
             print(f"Saving uncertainty evaluations to {args.evaluation_scores_path}")
             if args.dataset_type == "multiclass":
                 task_names = original_task_names
-            with open(args.evaluation_scores_path, "w") as f:
+            with open(args.evaluation_scores_path, "w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["evaluation_method"] + task_names)
                 for i, evaluation_method in enumerate(args.evaluation_methods):
