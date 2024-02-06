@@ -151,7 +151,7 @@ class MoleculeModel(nn.Module):
         else:
             self.readout = build_ffn(
                 first_linear_dim=atom_first_linear_dim,
-                hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
+                hidden_size=args.ffn_hidden_size,
                 num_layers=args.ffn_num_layers,
                 output_size=int(np.rint(self.relative_output_size * args.num_tasks)),
                 dropout=args.dropout,
@@ -161,8 +161,8 @@ class MoleculeModel(nn.Module):
             )
             if self.vle == "wohl":
                 self.wohl_q = build_ffn(
-                    first_linear_dim=self.hidden_size,
-                    hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
+                    first_linear_dim=self.hidden_size + args.features_size,
+                    hidden_size=args.ffn_hidden_size,
                     num_layers=args.ffn_num_layers,
                     output_size=1,
                     dropout=args.dropout,
@@ -270,6 +270,7 @@ class MoleculeModel(nn.Module):
         bond_features_batch: List[np.ndarray] = None,
         constraints_batch: List[torch.Tensor] = None,
         bond_types_batch: List[torch.Tensor] = None,
+        hybrid_model_features_batch: List[np.ndarray] = None,
     ) -> torch.Tensor:
         """
         Runs the :class:`MoleculeModel` on input.
@@ -309,7 +310,8 @@ class MoleculeModel(nn.Module):
             output = self.readout(encodings)
             if self.vle == "wohl":
                 encoding_1 = encodings[:,:self.hidden_size]
-                encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
+                encoding_1 = torch.concatenate([encoding_1, encodings[:,2*self.hidden_size:]], axis=1) # include features at the end
+                encoding_2 = encodings[:,self.hidden_size:] # includes features at the end
                 q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
                 q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
 
@@ -342,12 +344,14 @@ class MoleculeModel(nn.Module):
                 y_1 = self.sigmoid(logity_1)
                 y_2 = 1 - y_1
                 output = torch.cat([y_1, y_2, log10P], axis=1)
-            else:  # vle in ["activity", "wohl"]
-                x_1 = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
-                x_2 = torch.from_numpy(np.stack(features_batch)).float()[:,1].unsqueeze(-1).to(self.device)
-                temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,2].unsqueeze(-1).to(self.device)
-                log10p1sat = torch.from_numpy(np.stack(features_batch)).float()[:,3].unsqueeze(-1).to(self.device)
-                log10p2sat = torch.from_numpy(np.stack(features_batch)).float()[:,4].unsqueeze(-1).to(self.device)
+            else:  # vle in ["activity", "wohl"] # x1 x2 P1sat P2sat
+                hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
+                # print(hybrid_model_features_batch.shape)
+                # print(hybrid_model_features_batch)
+                x_1 = hybrid_model_features_batch[:,0].unsqueeze(-1)
+                x_2 = hybrid_model_features_batch[:,1].unsqueeze(-1)
+                p1sat = hybrid_model_features_batch[:,2].unsqueeze(-1)
+                p2sat = hybrid_model_features_batch[:,3].unsqueeze(-1)
                 if self.vle == "activity":
                     gamma_1 = torch.exp(output[:,0].unsqueeze(-1))
                     gamma_2 = torch.exp(output[:,1].unsqueeze(-1))
@@ -365,8 +369,8 @@ class MoleculeModel(nn.Module):
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     )
-                P1 = 10**log10p1sat * x_1 * gamma_1
-                P2 = 10**log10p2sat * x_2 * gamma_2
+                P1 = p1sat * x_1 * gamma_1
+                P2 = p2sat * x_2 * gamma_2
                 P = P1 + P2
                 y_1 = P1 / P
                 y_2 = P2 / P
@@ -376,7 +380,7 @@ class MoleculeModel(nn.Module):
         # Modify multi-input loss functions
         if self.antoine:
             antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
-            temp_batch = torch.from_numpy(np.stack(features_batch)).float()[:,0].unsqueeze(-1).to(self.device)
+            temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
             output = antoine_a - (antoine_b / (antoine_c + temp_batch))
         if self.loss_function == "mve":
             if self.is_atom_bond_targets:

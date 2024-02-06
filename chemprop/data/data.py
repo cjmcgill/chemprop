@@ -66,6 +66,7 @@ class MoleculeDatapoint:
                  features: np.ndarray = None,
                  features_generator: List[str] = None,
                  phase_features: List[float] = None,
+                 hybrid_model_features: List[float] = None,
                  atom_features: np.ndarray = None,
                  atom_descriptors: np.ndarray = None,
                  bond_features: np.ndarray = None,
@@ -102,6 +103,7 @@ class MoleculeDatapoint:
         self.features = features
         self.features_generator = features_generator
         self.phase_features = phase_features
+        self.hybrid_model_features = hybrid_model_features
         self.atom_descriptors = atom_descriptors
         self.bond_descriptors = bond_descriptors
         self.atom_features = atom_features
@@ -445,6 +447,15 @@ class MoleculeDataset(Dataset):
             return None
 
         return [d.phase_features for d in self._data]
+    
+    def hybrid_model_features(self) -> List[np.ndarray]:
+        """
+
+        """
+        if len(self._data) == 0 or self._data[0].hybrid_model_features is None:
+            return None
+
+        return [d.hybrid_model_features for d in self._data]
 
     def atom_features(self) -> List[np.ndarray]:
         """

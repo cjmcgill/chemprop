@@ -55,6 +55,7 @@ def predict(
         bond_descriptors_batch = batch.bond_descriptors()
         bond_features_batch = batch.bond_features()
         constraints_batch = batch.constraints()
+        hybrid_model_features_batch = batch.hybrid_model_features()
 
         if model.is_atom_bond_targets:
             natoms, nbonds = batch.number_of_atoms, batch.number_of_bonds
@@ -114,6 +115,7 @@ def predict(
                 bond_features_batch,
                 constraints_batch,
                 bond_types_batch,
+                hybrid_model_features_batch,
             )
 
         if model.is_atom_bond_targets:

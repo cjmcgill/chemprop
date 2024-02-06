@@ -126,7 +126,7 @@ def run_training(args: TrainArgs,
         )
 
     if args.features_scaling:
-        if args.vle is not None:
+        if args.vle in ["basic", "activity"]: # no scaling for x1 and x2
             unscaled_features_indices = [0,1]
         else:
             unscaled_features_indices = None
@@ -176,7 +176,7 @@ def run_training(args: TrainArgs,
             scaler = None
             atom_bond_scaler = train_data.normalize_atom_bond_targets()
         else:
-            if args.vle is not None:
+            if args.vle is not None: # no scaling for y1 and y2
                 unscaled_target_indices = [0,1]
             else:
                 unscaled_target_indices = None

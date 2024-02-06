@@ -692,7 +692,21 @@ def save_smiles_splits(
                 writer.writerow(smiles + targets)
 
         if features_path is not None:
-            dataset_features = dataset.features()
+            if dataset.hybrid_model_features() is not None: # vle-activity, vle-wohl, or antoine
+                hybrid_model_features = np.array(dataset.hybrid_model_features())
+                dataset_features = np.array(dataset.features())
+                if hybrid_model_features.shape[1] == 1: # antoine
+                    pass
+                else: # vle-activity or vle-wohl
+                    xs = hybrid_model_features[:, :2]
+                    if dataset_features.shape[1] == 1: # wohl
+                        T = dataset_features
+                    else:
+                        T = dataset_features[:, [2]]
+                    log10psat = np.log10(hybrid_model_features[:, 2:])
+                    dataset_features = np.concatenate((xs, T, log10psat), axis=1)
+            else:
+                dataset_features = dataset.features()
             if extension_sets == {'.csv'}:
                 with open(os.path.join(save_dir, f"{name}_features.csv"), "w", newline="") as f:
                     writer = csv.writer(f)

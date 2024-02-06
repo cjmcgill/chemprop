@@ -431,14 +431,27 @@ def get_data(path: str,
     else:
         phase_features = None
     
+    # Make hybrid_model_features
+    if args.vle in ["activity","wohl"] or args.antoine: # x1, x2, T, log10P1sat, log10P2sat
+        Psat = 10**features_data[:, 3:5]
+        hybrid_model_features = np.concatenate([features_data[:, :2], Psat], axis=1) # x1, x2, Psat1, Psat2
+    elif args.antoine:
+        hybrid_model_features = features_data[:,[2]] # T only
+    else:
+        hybrid_model_features = None
+
+    print(np.array(features_data).shape)
+
     # If VLE model, add extra features for log10(Psat)
-    if args is not None and args.vle is not None:
-        if features_data is not None: # x1, x2, T, log10P1sat, log10P2sat
-            xs = features_data[:, :2]
-            Psat = 10**features_data[:, 3:5]
-            PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
-            log10PRaoult = np.log10(PRaoult)
-            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1)
+    if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
+        xs = features_data[:, :2]
+        Psat = 10**features_data[:, 3:5]
+        PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
+        log10PRaoult = np.log10(PRaoult)
+        if args.vle in ["basic", "activity"]:
+            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1) # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult, P1sat, P2sat, PRaoult
+        else: # wohl
+            features_data = features_data[:,[2]] # T only
 
     # Load constraints
     if constraints_path is not None:
@@ -481,7 +494,8 @@ def get_data(path: str,
         if any([c not in fieldnames for c in target_columns]):
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
-        all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], []
+        all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt, all_hybrid_model_features = [], [], [], [], [], [], [], [], [], [], [], [], []
+        print(np.array(features_data).shape)
         for i, row in enumerate(tqdm(reader)):
             smiles = [row[c] for c in smiles_columns]
 
@@ -546,6 +560,9 @@ def get_data(path: str,
             if lt_targets is not None:
                 all_lt.append(lt_targets[i])
 
+            if hybrid_model_features is not None:
+                all_hybrid_model_features.append(hybrid_model_features[i])
+
             if store_row:
                 all_rows.append(row)
 
@@ -591,6 +608,7 @@ def get_data(path: str,
                 features_generator=features_generator,
                 features=all_features[i] if features_data is not None else None,
                 phase_features=all_phase_features[i] if phase_features is not None else None,
+                hybrid_model_features=all_hybrid_model_features[i] if hybrid_model_features is not None else None,
                 atom_features=atom_features[i] if atom_features is not None else None,
                 atom_descriptors=atom_descriptors[i] if atom_descriptors is not None else None,
                 bond_features=bond_features[i] if bond_features is not None else None,
