@@ -237,8 +237,9 @@ def normal_mve(pred_values, targets):
     :return: A tensor loss value.
     """
     # Unpack combined prediction values
-    pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
 
+    pred_means, pred_var = torch.split(pred_values, pred_values.shape[1] // 2, dim=1)
+    pred_var = torch.clamp(pred_var, 1e-5)
     return torch.log(2 * np.pi * pred_var) / 2 + (pred_means - targets) ** 2 / (2 * pred_var)
 
 
@@ -346,6 +347,7 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
 
     # Calculate NLL loss
     v = torch.clamp(v, v_min)
+    beta = torch.clamp(beta, v_min)
     twoBlambda = 2 * beta * (1 + v)
     nll = (
         0.5 * torch.log(np.pi / v)

@@ -4,7 +4,7 @@ from typing import List
 import numpy as np
 from scipy.stats import t, spearmanr
 from scipy.special import erfinv
-
+from sklearn.metrics import mean_squared_error
 from chemprop.uncertainty.uncertainty_calibrator import UncertaintyCalibrator
 from chemprop.train import evaluate_predictions
 
@@ -402,6 +402,51 @@ class ExpectedNormalizedErrorEvaluator(UncertaintyEvaluator):
         ence = np.mean(np.abs(root_mean_vars - rmses) / root_mean_vars, axis=1)
         return ence.tolist()
 
+class RMSEEvaluator(UncertaintyEvaluator):
+    
+    def evaluate(
+        self,
+        targets: List[List[float]],
+        preds: List[List[float]],
+        uncertainties: List[List[float]],
+        mask: List[List[bool]],
+    ):
+        targets = np.array(targets)  # shape(data, tasks)
+        uncertainties = np.array(uncertainties)
+        mask = np.array(mask)
+        num_tasks = len(mask)
+        preds = np.array(preds)
+        RMSE = []
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+            preds = np.array(list(zip(*preds)))
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            task_targets = targets[i][task_mask]
+            task_preds = preds[i][task_mask]
+            rmse=np.sqrt(mean_squared_error(task_targets, task_preds))
+            RMSE.append(rmse)
+            
+        return RMSE
+
+    actual = np.array([3.5, 2.7, 5.2, 7.0, 8.1])
+
+    # Predicted values
+    predicted = np.array([3.2, 2.9, 4.8, 7.2, 8.0])
+
+    # Calculate Mean Squared Error (MSE)
+    mse = mean_squared_error(actual, predicted)
+
+    # Calculate RMSE (Square root of MSE)
+    rmse = np.sqrt(mse)
+
+    print("RMSE:", rmse)
 
 
 
@@ -612,7 +657,8 @@ def build_uncertainty_evaluator(
         "spearman": SpearmanEvaluator,
         "sharpness": SharpnessEvaluator,
         "sharpness_root": Sharpness_rootEvaluator,
-        "cv": CoefficientVarianceEvaluator
+        "cv": CoefficientVarianceEvaluator,
+        "rmse": RMSEEvaluator
     }
 
     classification_metrics = [

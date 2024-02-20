@@ -1,4 +1,5 @@
 from chemprop.train.make_predictions import make_predictions
+from chemprop.train.molecule_fingerprint import molecule_fingerprint
 import os
 import shutil
 import csv
@@ -9,7 +10,7 @@ from typing_extensions import Literal
 from tap import Tap
 from tqdm import tqdm
 import numpy as np
-from chemprop.args import TrainArgs, PredictArgs
+from chemprop.args import TrainArgs, PredictArgs, FingerprintArgs
 from chemprop.data import get_task_names, get_data, MoleculeDataset, split_data, scaffold_split
 from chemprop.train import cross_validate, run_training
 from chemprop.utils import makedirs
@@ -17,6 +18,10 @@ import random
 from rdkit import Chem
 from rdkit.Chem import AllChem
 import math
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+from datetime import datetime
+import pandas as pd
 
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
@@ -45,6 +50,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
         "evidential_epistemic",
         "evidential_aleatoric",
         "evidential_total",
+        "dropout",
+        "hybrid"
     ] = "random"
     """
     which function to use for choosing what molecules to add
@@ -62,6 +69,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
         "evidential_epistemic",
         "evidential_aleatoric",
         "evidential_total",
+        "dropout"
     ] = "ensemble"
     """
     which function to use for comparison model.
@@ -91,6 +99,7 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
         "related_max",
         "related_mean",
         "morgan_fp",
+        "model_fp"
     ] = "random"
     """
     how to choose the initial trainval set.
@@ -107,23 +116,41 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     initial_trainval_seed: int = None # random number for choosing the initial trainval set
     initial_trainval_fraction: float = None # the fraction of data in the initial trainval set
     moprganfp_similarity: Literal["tanimoto", "dice","cosine", "sokal", "russel", "kulczynski", "mcconnaughey"] = "tanimoto" # the similarity metric for morgan fingerprint
+    data_selection : Literal["uncertainty","kmeans"] = "uncertainty" # the method for selecting the data
+    hybrid_method: Literal[
+        "ensemble",
+        "random",
+        "mve",
+        "mve_ensemble",
+        "evidential",
+        "evidential_epistemic",
+        "evidential_aleatoric",
+        "evidential_total",
+        "dropout"
+    ] = "random"
+    hybrid_count: int = 2 
 
-
+#@profile
 def active_learning(active_args: ActiveArgs):
+    
     train_args = get_initial_train_args(
+        active_args=active_args,
         train_config_path=active_args.train_config_path,
         data_path=active_args.data_path,
         search_function=active_args.search_function,
         gpu=active_args.gpu,
         evidential_regularization=active_args.evidential_regularization,
+        save_dir= None
     )
     if not active_args.no_comparison_model:
         train_args2 = get_initial_train_args(
+            active_args=active_args,
             train_config_path=active_args.train_config_path2,
             data_path=active_args.data_path,
             search_function=active_args.search_function2,
             gpu=active_args.gpu,
             evidential_regularization=active_args.evidential_regularization,
+            save_dir= None
         )
     active_args.split_type = train_args.split_type
     active_args.task_names = train_args.task_names
@@ -134,9 +161,21 @@ def active_learning(active_args: ActiveArgs):
     makedirs(active_args.active_save_dir)
     whole_data, nontest_data, test_data = get_test_split(
         active_args=active_args,
-        save_test_nontest=False,
+        save_test_nontest=True,
         save_indices=True
     )
+    if active_args.initial_trainval_type == "model_fp":
+        init_train_args= get_initial_train_args(
+            active_args=active_args,
+            train_config_path=active_args.train_config_path,
+            data_path=os.path.join(active_args.active_save_dir, "nontest_full.csv"),
+            search_function=active_args.search_function,
+            gpu=active_args.gpu,
+            evidential_regularization=active_args.evidential_regularization,
+            save_dir= active_args.active_save_dir
+        )
+        cross_validate(args=init_train_args, train_func=run_training)
+        makedirs(os.path.join(active_args.active_save_dir, "init"))
     trainval_data, remaining_data = initial_trainval_split(
         active_args=active_args,
         nontest_data=nontest_data,
@@ -144,10 +183,15 @@ def active_learning(active_args: ActiveArgs):
         save_data=False,
         save_indices=True,
     )
+    
+    # assert False
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
-    print(active_args.train_sizes)
+    spearman_cal, cv_cal, sharpness_cal = [], [], []
+    nll_cal, miscalibration_area_cal, ence_cal, sharpness_root_cal = [], [], [], []
     for i in range(len(active_args.train_sizes)):
+        if active_args.search_function == "hybrid" and i ==active_args.hybrid_count:
+            active_args.search_function = active_args.hybrid_method
         active_args.iter_save_dir = os.path.join(
             active_args.active_save_dir,
             f"train{active_args.train_sizes[i]}",
@@ -163,6 +207,7 @@ def active_learning(active_args: ActiveArgs):
             active_args.active_save_dir,
             f"train{active_args.train_sizes[i]}",
         )
+        
         makedirs(active_args.iter_save_dir)
         if not active_args.no_comparison_model:
             makedirs(active_args.iter_save_dir2)
@@ -181,27 +226,52 @@ def active_learning(active_args: ActiveArgs):
                 save_new_indices=True,
                 save_full_indices=True,
                 iteration=i,
+                data_selection=active_args.data_selection,
             )
+        validation_set, train_set,_  = split_data(
+            data=trainval_data,
+            sizes=(0.2, 0.8, 0),
+        )
+        
         save_datainputs(
             active_args=active_args,
             trainval_data=trainval_data,
             remaining_data=remaining_data,
             test_data=test_data,
         )
+        save_dataset(
+            data=validation_set,
+            save_dir=active_args.run_save_dir,
+            filename_base="validation_set",
+            active_args=active_args,
+        )
+        save_dataset(
+            data=train_set,
+            save_dir=active_args.run_save_dir,
+            filename_base="training_set",
+            active_args=active_args,
+        )
+        
         update_train_args(active_args=active_args, train_args=train_args)
         if not active_args.no_comparison_model:
             update_train_args2(active_args=active_args, train_args=train_args2)
+        
         cross_validate(args=train_args, train_func=run_training)
         if not active_args.no_comparison_model:
             cross_validate(args=train_args2, train_func=run_training)
-        run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu)
-        test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu)
+        run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+        test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+        if active_args.search_function != "random":
+            cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+            val_cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+        val_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
         if not active_args.no_comparison_model:
             run_predictions2(active_args=active_args, train_args=train_args2,gpu=active_args.gpu)
         get_pred_results(
             active_args=active_args,
             whole_data=whole_data,
             iteration=i,
+            search_function=active_args.search_function,
             save_error=True,
         )
         if not active_args.no_comparison_model:
@@ -252,33 +322,67 @@ def active_learning(active_args: ActiveArgs):
             ence,
             sharpness_root,
         )
-        cleanup_active_files(
-            active_args=active_args,
-            train_args=train_args,
-            remove_models=True,
-            remove_datainputs=False,
-            remove_preds=False,
-            remove_indices=False,
+        (
+        spearman1_cal,
+            nll1_cal,
+            miscalibration_area1_cal,
+            ence1_cal,
+            sharpness1_cal,
+            shar_root1_cal,
+            cv1_cal,
+        ) = get_evaluation_scores_cal(active_args=active_args)
+        spearman_cal.append(spearman1_cal)
+        nll_cal.append(nll1_cal)
+        miscalibration_area_cal.append(miscalibration_area1_cal)
+        ence_cal.append(ence1_cal)
+        sharpness_cal.append(sharpness1_cal)
+        sharpness_root_cal.append(shar_root1_cal)
+        cv_cal.append(cv1_cal)
+        save_evaluations_cal(
+            active_args,
+            spearman_cal,
+            cv_cal,
+            rmses,
+            rmses2,
+            sharpness_cal,
+            nll_cal,
+            miscalibration_area_cal,
+            ence_cal,
+            sharpness_root_cal,
         )
-        if not active_args.no_comparison_model:
-            cleanup_active_files2(
-                active_args=active_args,
-                train_args2=train_args2,
-                remove_models=True,
-                remove_datainputs=False,
-                remove_preds=False,
-                remove_indices=False,
-            )
+        
+        # cleanup_active_files(
+        #     active_args=active_args,
+        #     train_args=train_args,
+        #     remove_models=True,
+        #     remove_datainputs=False,
+        #     remove_preds=False,
+        #     remove_indices=False,
+        # )
+        # if not active_args.no_comparison_model:
+        #     cleanup_active_files2(
+        #         active_args=active_args,
+        #         train_args2=train_args2,
+        #         remove_models=True,
+        #         remove_datainputs=False,
+        #         remove_preds=False,
+        #         remove_indices=False,
+        #     )
 
 
 # extract config settings from config json file
+#@profile
 def get_initial_train_args(
+        active_args: ActiveArgs,
     train_config_path: str,
     data_path: str,
     search_function,
     gpu,
-    evidential_regularization
+    evidential_regularization,
+    save_dir,
 ):
+    if search_function == "hybrid":
+        search_function = active_args.hybrid_method
     with open(train_config_path) as f:
         config_dict = json.load(f)
     config_keys = config_dict.keys()
@@ -297,6 +401,10 @@ def get_initial_train_args(
         "--dataset_type",
         dataset_type,
     ]
+    if save_dir is not None:
+        commandline_inputs.extend(["--save_dir", os.path.join(save_dir, "init")])
+        commandline_inputs.extend(["--split_sizes", "1", "0" ,"0"])
+        commandline_inputs.extend(["--separate_val_path", os.path.join(save_dir, "test_full.csv")])
     if search_function == "mve":
         commandline_inputs.extend(["--loss_function", "mve"])
     elif search_function == "mve_ensemble":
@@ -327,7 +435,7 @@ def get_initial_train_args(
 
     return initial_train_args
 
-
+#@profile
 def get_test_split(
     active_args: ActiveArgs,save_test_nontest: bool = True, save_indices: bool = True
 ) -> Tuple[MoleculeDataset]:
@@ -454,7 +562,7 @@ def get_test_split(
 
     return whole_data, nontest_data, test_data
 
-
+#@profile
 def save_dataset(
     data: MoleculeDataset, save_dir: str, filename_base: str, active_args: ActiveArgs
 ) -> None:
@@ -481,7 +589,7 @@ def save_dataset(
             for d in data:
                 writer.writerow(d.features)
 
-
+#@profile
 def save_smiles(
     data: MoleculeDataset, save_dir: str, filename_base: str, active_args: ActiveArgs
 ) -> None:
@@ -497,7 +605,7 @@ def save_smiles(
 
 
 
-
+#@profile
 def print_max_duplicates(lst):
     flat_list = [item for sublist in lst for item in sublist]
     frequency = {}
@@ -517,7 +625,7 @@ def print_max_duplicates(lst):
     return max_frequency
 
 
-
+#@profile
 def initial_trainval_split(
     active_args: ActiveArgs,
     nontest_data: MoleculeDataset,
@@ -576,7 +684,25 @@ def initial_trainval_split(
             save_dir=active_args.active_save_dir,
             filename_base="trainval",
         )  
-    if active_args.initial_trainval_type == "related_max":
+    elif active_args.initial_trainval_type == "model_fp":
+        smiles=get_fingerprint_init(nontest_data=nontest_data,active_args=active_args,gpu=active_args.gpu)
+        smiles_=MoleculeDataset.smiles(nontest_data) 
+        print('------------------------------------')
+        print(len(smiles))
+        print(len(smiles_))
+        print(active_args.initial_trainval_size)
+        print('------------------------------------')
+        new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
+        trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        )  
+        
+
+    elif active_args.initial_trainval_type == "related_max":
         target_nontest =MoleculeDataset.targets(nontest_data)
         smiles_nontest=MoleculeDataset.smiles(nontest_data) 
         sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
@@ -748,7 +874,7 @@ def initial_trainval_split(
 
     return trainval_data, remaining_data
 
-
+#@profile
 def get_feature_names(active_args: ActiveArgs) -> List[str]:
     if active_args.features_path is not None:
         features_header = []
@@ -761,7 +887,7 @@ def get_feature_names(active_args: ActiveArgs) -> List[str]:
     else:
         return None
 
-
+#@profile
 def get_indices(whole_data: MoleculeDataset, subset: MoleculeDataset) -> Set[int]:
     subset_hashes = set()
     subset_indices = set()
@@ -775,15 +901,15 @@ def get_indices(whole_data: MoleculeDataset, subset: MoleculeDataset) -> Set[int
             subset_indices.add(index)
     return subset_indices
 
-
+#@profile
 def save_dataset_indices(indices: Set[int], save_dir: str, filename_base: str) -> None:
     with open(os.path.join(save_dir, f"{filename_base}_indices.pckl"), "wb") as f:
         pickle.dump(indices, f)
 
 
 # train args that will use to train the selection model
+#@profile
 def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
-    train_args.seed = 0
     train_args.save_dir = active_args.iter_save_dir
     train_args.data_path = os.path.join(active_args.run_save_dir, "trainval_full.csv")
     train_args.separate_test_path = os.path.join(
@@ -799,6 +925,7 @@ def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
 
 
 # train args that will use to train the comparison model
+#@profile
 def update_train_args2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
     train_args.save_dir = active_args.iter_save_dir2
     train_args.data_path = os.path.join(active_args.run_save_dir, "trainval_full.csv")
@@ -813,7 +940,7 @@ def update_train_args2(active_args: ActiveArgs, train_args: TrainArgs) -> None:
             os.path.join(active_args.run_save_dir2, "test_features.csv")
         ]
 
-
+#@profile
 def save_datainputs(
     active_args: ActiveArgs,
     trainval_data: MoleculeDataset,
@@ -838,8 +965,8 @@ def save_datainputs(
         filename_base="test",
         active_args=active_args,
     )
-
-def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
+#@profile
+def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
     argument_input = [
         "--test_path",
         os.path.join(active_args.run_save_dir, "test_full.csv"),
@@ -862,6 +989,7 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None
                 "sharpness",
                 "sharpness_root",
                 "cv",
+                "rmse",
             ]
         )
     if active_args.features_path is not None:
@@ -875,33 +1003,39 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None
         argument_input.extend(["--gpu", str(gpu)])
     # if isinstance(train_args.gpu, int):
     #     argument_input.extend(["--gpu", train_args.gpu])
-    if active_args.search_function == "ensemble":
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        search_function = active_args.hybrid_method
+    if search_function == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
         argument_input.extend(["--uncertainty_method", "ensemble"])
-    elif active_args.search_function == "mve":
+    elif search_function == "mve":
         argument_input.extend(["--uncertainty_method", "mve"])
-    elif active_args.search_function == "mve_ensemble":
+    elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
     elif (
-        active_args.search_function == "evidential_total"
-        or active_args.search_function == "evidential"
+        search_function == "evidential_total"
+        or search_function == "evidential"
     ):
         argument_input.extend(["--uncertainty_method", "evidential_total"])
-    elif active_args.search_function == "evidential_aleatoric":
+    elif search_function == "evidential_aleatoric":
         argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
-    elif active_args.search_function == "evidential_epistemic":
+    elif search_function == "evidential_epistemic":
         argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
-    elif active_args.search_function == "random":
+    elif search_function == "dropout":
+        argument_input.extend(["--uncertainty_method", "dropout"])
+    elif search_function == "random":
         pass
     else:
         raise ValueError(
-            f"The search function {active_args.search_function}" + "is not supported."
+            f"The search function {search_function}" + "is not supported."
         )
     pred_args = PredictArgs().parse_args(argument_input)
-    make_predictions(pred_args)
+    x=make_predictions(pred_args)
+    del x
 
 # run predictions for selection model
-def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
+#@profile
+def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
     argument_input = [
         "--test_path",
         os.path.join(active_args.active_save_dir, "whole_full.csv"),
@@ -924,6 +1058,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
                 "sharpness",
                 "sharpness_root",
                 "cv",
+                "rmse",
             ]
         )
     if active_args.features_path is not None:
@@ -937,33 +1072,242 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
         argument_input.extend(["--gpu", str(gpu)])
     # if isinstance(train_args.gpu, int):
     #     argument_input.extend(["--gpu", train_args.gpu])
-    if active_args.search_function == "ensemble":
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        search_function = active_args.hybrid_method
+    if search_function == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
         argument_input.extend(["--uncertainty_method", "ensemble"])
-    elif active_args.search_function == "mve":
+    elif search_function == "mve":
         argument_input.extend(["--uncertainty_method", "mve"])
-    elif active_args.search_function == "mve_ensemble":
+    elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
     elif (
-        active_args.search_function == "evidential_total"
-        or active_args.search_function == "evidential"
+        search_function == "evidential_total"
+        or search_function == "evidential"
     ):
         argument_input.extend(["--uncertainty_method", "evidential_total"])
-    elif active_args.search_function == "evidential_aleatoric":
+    elif search_function == "evidential_aleatoric":
         argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
-    elif active_args.search_function == "evidential_epistemic":
+    elif search_function == "evidential_epistemic":
         argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
-    elif active_args.search_function == "random":
+    elif search_function == "dropout":
+        argument_input.extend(["--uncertainty_method", "dropout"])      
+    elif search_function == "random":
+        pass
+    else:
+        raise ValueError(
+            f"The search function {search_function}" + "is not supported."
+        )
+    pred_args = PredictArgs().parse_args(argument_input)
+    x=make_predictions(pred_args)
+    del x
+#@profile
+def cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
+    argument_input = [
+        "--test_path",
+        os.path.join(active_args.run_save_dir, "test_full.csv"),
+        "--checkpoint_dir",
+        active_args.iter_save_dir,
+        "--preds_path",
+        os.path.join(active_args.iter_save_dir, "test_pred_cal.csv"),
+        "--evaluation_scores_path",
+        os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"),
+        "--calibration_method", "zscaling",
+        "--calibration_path", os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+
+    ]
+    if active_args.search_function != "random":
+        argument_input.extend(
+            [
+                "--evaluation_methods",
+                "nll",
+                "miscalibration_area",
+                "ence",
+                "spearman",
+                "sharpness",
+                "sharpness_root",
+                "cv",
+                "rmse",
+            ]
+        )
+    if active_args.features_path is not None:
+        argument_input.extend(
+            [
+                "--features_path",
+                os.path.join(active_args.active_save_dir, "whole_features.csv"),
+            ]
+        )
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        search_function = active_args.hybrid_method
+    if search_function == "ensemble":
+        assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
+        argument_input.extend(["--uncertainty_method", "ensemble"])
+    elif search_function == "mve":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "mve_ensemble":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif (
+        search_function == "evidential_total"
+        or search_function == "evidential"
+    ):
+        argument_input.extend(["--uncertainty_method", "evidential_total"])
+    elif search_function == "evidential_aleatoric":
+        argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
+    elif search_function == "evidential_epistemic":
+        argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
+    elif search_function == "dropout":
+        argument_input.extend(["--uncertainty_method", "dropout"])
+    elif search_function == "random":
         pass
     else:
         raise ValueError(
             f"The search function {active_args.search_function}" + "is not supported."
         )
     pred_args = PredictArgs().parse_args(argument_input)
-    make_predictions(pred_args)
+    x=make_predictions(pred_args)
+    del x
+#@profile
+def val_cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
+    argument_input = [
+        "--test_path",
+        os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        "--checkpoint_dir",
+        active_args.iter_save_dir,
+        "--preds_path",
+        os.path.join(active_args.iter_save_dir, "val_pred_cal.csv"),
+        "--evaluation_scores_path",
+        os.path.join(active_args.iter_save_dir, "evaluation_scores_cal_val.csv"),
+        "--calibration_method", "zscaling",
+        "--calibration_path", os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
 
+    ]
+    if active_args.search_function != "random":
+        argument_input.extend(
+            [
+                "--evaluation_methods",
+                "nll",
+                "miscalibration_area",
+                "ence",
+                "spearman",
+                "sharpness",
+                "sharpness_root",
+                "cv",
+                "rmse",
+            ]
+        )
+    if active_args.features_path is not None:
+        argument_input.extend(
+            [
+                "--features_path",
+                os.path.join(active_args.active_save_dir, "whole_features.csv"),
+            ]
+        )
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        search_function = active_args.hybrid_method
+    if search_function == "ensemble":
+        assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
+        argument_input.extend(["--uncertainty_method", "ensemble"])
+    elif search_function == "mve":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "mve_ensemble":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif (
+        search_function == "evidential_total"
+        or search_function == "evidential"
+    ):
+        argument_input.extend(["--uncertainty_method", "evidential_total"])
+    elif search_function == "evidential_aleatoric":
+        argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
+    elif search_function == "evidential_epistemic":
+        argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
+    elif search_function == "dropout":
+        argument_input.extend(["--uncertainty_method", "dropout"])
+    elif search_function == "random":
+        pass
+    else:
+        raise ValueError(
+            f"The search function {search_function}" + "is not supported."
+        )
+    pred_args = PredictArgs().parse_args(argument_input)
+    x=make_predictions(pred_args)
+    del x
+#@profile
+def val_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
+    argument_input = [
+        "--test_path",
+        os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        "--checkpoint_dir",
+        active_args.iter_save_dir,
+        "--preds_path",
+        os.path.join(active_args.iter_save_dir, "val_pred.csv"),
+        "--evaluation_scores_path",
+        os.path.join(active_args.iter_save_dir, "evaluation_scores_val.csv"),
 
+    ]
+    if active_args.search_function != "random":
+        argument_input.extend(
+            [
+                "--evaluation_methods",
+                "nll",
+                "miscalibration_area",
+                "ence",
+                "spearman",
+                "sharpness",
+                "sharpness_root",
+                "cv",
+                "rmse",
+            ]
+        )
+    if active_args.features_path is not None:
+        argument_input.extend(
+            [
+                "--features_path",
+                os.path.join(active_args.active_save_dir, "whole_features.csv"),
+            ]
+        )
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    # if isinstance(train_args.gpu, int):
+    #     argument_input.extend(["--gpu", train_args.gpu])
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        search_function = active_args.hybrid_method
+    if search_function == "ensemble":
+        assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
+        argument_input.extend(["--uncertainty_method", "ensemble"])
+    elif search_function == "mve":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "mve_ensemble":
+        argument_input.extend(["--uncertainty_method", "mve"])
+    elif (
+        search_function == "evidential_total"
+        or search_function == "evidential"
+    ):
+        argument_input.extend(["--uncertainty_method", "evidential_total"])
+    elif search_function == "evidential_aleatoric":
+        argument_input.extend(["--uncertainty_method", "evidential_aleatoric"])
+    elif search_function == "evidential_epistemic":
+        argument_input.extend(["--uncertainty_method", "evidential_epistemic"])
+    elif search_function == "dropout":
+        argument_input.extend(["--uncertainty_method", "dropout"])
+    elif search_function == "random":
+        pass
+    else:
+        raise ValueError(
+            f"The search function {search_function}" + "is not supported."
+        )
+    pred_args = PredictArgs().parse_args(argument_input)
+    x=make_predictions(pred_args)
+    del x
 # run predictions for comparison model
+#@profile
 def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None:
     argument_input = [
         "--test_path",
@@ -987,16 +1331,21 @@ def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None
     if active_args.search_function2 == "ensemble":
         assert (train_args.ensemble_size != 1) or (train_args.num_folds != 1)
     pred_args2 = PredictArgs().parse_args(argument_input)
-    make_predictions(pred_args2)
+    x=make_predictions(pred_args2)
+    del x
 
 
 # extract predicted results by selection model
+#@profile
 def get_pred_results(
     active_args: ActiveArgs,
     whole_data: MoleculeDataset,
     iteration: int,
+    search_function,
     save_error=False,
 ) -> None:
+    if active_args.search_function == "hybrid":
+        search_function = active_args.hybrid_method
     with open(os.path.join(active_args.iter_save_dir, "whole_preds.csv"), "r") as f:
         reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
@@ -1006,35 +1355,39 @@ def get_pred_results(
                 ] = float(
                     line[j]
                 )  # exp_#
-                if active_args.search_function == "ensemble":
+                if search_function == "ensemble":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(
                         line[j + "_ensemble_uncal_var"]
                     )  # exp_unc_#
-                elif active_args.search_function == "mve":
+                elif search_function == "mve":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_mve_uncal_var"])
-                elif active_args.search_function == "mve_ensemble":
+                elif search_function == "mve_ensemble":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_mve_uncal_var"])
                 elif (
-                    active_args.search_function == "evidential_total"
-                    or active_args.search_function == "evidential"
+                    search_function == "evidential_total"
+                    or search_function == "evidential"
                 ):
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_evidential_total_uncal_var"])
-                elif active_args.search_function == "evidential_aleatoric":
+                elif search_function == "evidential_aleatoric":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_evidential_aleatoric_uncal_var"])
-                elif active_args.search_function == "evidential_epistemic":
+                elif search_function == "evidential_epistemic":
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_evidential_epistemic_uncal_var"])
+                elif search_function == "dropout":
+                    whole_data[i].output[
+                        j + f"_unc_{active_args.train_sizes[iteration]}"
+                    ] = float(line[j + "_dropout_uncal_var"])
                 if save_error:
                     whole_data[i].output[
                         j + f"_error_{active_args.train_sizes[iteration]}"
@@ -1042,6 +1395,7 @@ def get_pred_results(
 
 
 # extract predicted results by comparison model
+#@profile
 def get_pred_results2(
     active_args: ActiveArgs,
     whole_data: MoleculeDataset,
@@ -1058,7 +1412,7 @@ def get_pred_results2(
                     line[j]
                 )  # exp_#
 
-
+#@profile
 def save_results(
     active_args: ActiveArgs,
     test_data: MoleculeDataset,
@@ -1107,16 +1461,20 @@ def save_results(
             for d in whole_data:
                 writer.writerow(d.output)
 
-
+#@profile
 def update_trainval_split(
     new_trainval_size: int,
     iteration: int,
     active_args: ActiveArgs,
     previous_trainval_data: MoleculeDataset,
     previous_remaining_data: MoleculeDataset,
+    data_selection: str,
     save_new_indices: bool = True,
     save_full_indices: bool = False,
 ) -> Tuple[MoleculeDataset]:
+    
+    if active_args.search_function == "hybrid" and iteration <= active_args.hybrid_count:
+        data_selection = "kmeans"
     num_additional = new_trainval_size - len(previous_trainval_data)
     if num_additional <= 0:
         raise ValueError(
@@ -1130,33 +1488,59 @@ def update_trainval_split(
             + "requires more data than is in the remaining pool, "
             + f"{len(previous_remaining_data)}"
         )
-    if active_args.search_function != "random":  # only for a single task
-        priority_values = [
-            d.output[
-                active_args.task_names[0]
-                + f"_unc_{active_args.train_sizes[iteration-1]}"
-            ]
-            for d in previous_remaining_data
-        ]
-    elif active_args.search_function == "random":
-        priority_values = [np.random.rand() for d in previous_remaining_data]
-    sorted_remaining_data = [
-        d
-        for _, d in sorted(
-            zip(priority_values, previous_remaining_data),
-            reverse=True,
-            key=lambda x: (x[0], np.random.rand()),
-        )
-    ]
-    new_data = sorted_remaining_data[:num_additional]
-    new_data_indices = {d.index for d in new_data}
-    updated_trainval_data = MoleculeDataset(
-        [d for d in previous_trainval_data] + new_data
-    )
-    updated_remaining_data = MoleculeDataset(
-        [d for d in previous_remaining_data if d.index not in new_data_indices]
-    )
+    if data_selection == "uncertainty":
 
+        if active_args.search_function != "random":  # only for a single task
+            priority_values = [
+                d.output[
+                    active_args.task_names[0]
+                    + f"_unc_{active_args.train_sizes[iteration-1]}"
+                ]
+                for d in previous_remaining_data
+            ]
+        elif active_args.search_function == "random":
+            priority_values = [np.random.rand() for d in previous_remaining_data]
+        sorted_remaining_data = [
+            d
+            for _, d in sorted(
+                zip(priority_values, previous_remaining_data),
+                reverse=True,
+                key=lambda x: (x[0], np.random.rand()),
+            )
+        ]
+        new_data = sorted_remaining_data[:num_additional]
+        new_data_indices = {d.index for d in new_data}
+        updated_trainval_data = MoleculeDataset(
+            [d for d in previous_trainval_data] + new_data
+        )
+        updated_remaining_data = MoleculeDataset(
+            [d for d in previous_remaining_data if d.index not in new_data_indices]
+        )
+
+    elif data_selection == "kmeans":
+        smiles=get_fingerprint(previous_remaining_data=previous_remaining_data,active_args=active_args,gpu=active_args.gpu,i=iteration)
+        smiles_=MoleculeDataset.smiles(previous_remaining_data) 
+        # print("--------------------------------------------------------")
+        # for d in previous_remaining_data:
+        #     print(f"Keys in d.output: {d.output.keys()}")
+
+        # print("--------------------------------------------------------")
+        # priority_values = [
+        #         d.output[
+        #             active_args.task_names[0]
+        #             + f"_{active_args.train_sizes[iteration-1]}"
+        #         ]
+        #         for d in previous_remaining_data
+        #     ]
+        # assert False
+        new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))]
+        new_data=MoleculeDataset([previous_remaining_data[i] for i in new_indices])
+        new_data_indices = new_indices
+        updated_trainval_data = MoleculeDataset(new_data + previous_trainval_data)
+        updated_remaining_data = MoleculeDataset(
+            [d for d in previous_remaining_data if d.index not in new_indices]
+        )
+    
     if save_new_indices:
         save_dataset_indices(
             indices=new_data_indices,
@@ -1180,6 +1564,7 @@ def update_trainval_split(
 
 
 # trainval and remaining, model files, preds
+#@profile
 def cleanup_active_files(
     active_args: ActiveArgs,
     train_args: TrainArgs,
@@ -1222,6 +1607,7 @@ def cleanup_active_files(
 
 
 # clean unnecessary files of comparison model
+#@profile
 def cleanup_active_files2(
     active_args: ActiveArgs,
     train_args2: TrainArgs,
@@ -1264,6 +1650,7 @@ def cleanup_active_files2(
 
 
 # extract rmse of selection model
+#@profile
 def get_rmse(active_args):
     with open(os.path.join(active_args.iter_save_dir, "test_scores.csv"), "r") as f:
         reader = csv.DictReader(f)
@@ -1274,6 +1661,7 @@ def get_rmse(active_args):
 
 
 # extract rmse of comparison model
+#@profile
 def get_rmse2(active_args):
     with open(os.path.join(active_args.iter_save_dir2, "test_scores.csv"), "r") as f:
         reader = csv.DictReader(f)
@@ -1284,6 +1672,7 @@ def get_rmse2(active_args):
 
 
 # extract calculated evaluation scores by chemprop
+#@profile
 def get_evaluation_scores(active_args):
     if active_args.search_function != "random":
         with open(
@@ -1316,9 +1705,42 @@ def get_evaluation_scores(active_args):
     else:
             spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
     return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv
+#@profile
+def get_evaluation_scores_cal(active_args):
+    if active_args.search_function != "random":
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"), "r"
+        ) as file:
+            csv_reader = csv.reader(file)
+            rows = list(csv_reader)
+            transposed_rows = list(zip(*rows))
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(transposed_rows)
 
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"), "r"
+        ) as f:
+            reader = csv.DictReader(f)
+            for i, line in enumerate(tqdm(reader)):
+                for j in active_args.task_names:
+                    spearmans = float(line["spearman"])
+                    nlls = float(line["nll"])
+                    miscalibration_areas = float(line["miscalibration_area"])
+                    ences = float(line["ence"])
+                    sharpness = float(line["sharpness"])
+                    sharpness_root = float(line["sharpness_root"])
+                    cv = float(line["cv"])
+    else:
+            spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
+    return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv
 
 # save uncertainty evaluations in one file
+#@profile
 def save_evaluations(
     active_args,
     spearmans,
@@ -1365,6 +1787,53 @@ def save_evaluations(
             ]
             writer.writerow(new_row)
 
+#@profile
+def save_evaluations_cal(
+    active_args,
+    spearmans,
+    cv,
+    rmses,
+    rmses2,
+    sharpness,
+    nll,
+    miscalibration_area,
+    ence,
+    sharpness_root,
+):
+    with open(
+        os.path.join(active_args.active_save_dir, "uncertainty_evaluations_cal.csv"),
+        "w",
+        newline="",
+    ) as f:
+        writer = csv.writer(f)
+        header = [
+            "data_points",
+            "spearman",
+            "cv",
+            "sharpness",
+            "sharpness_root",
+            "rmse",
+            "rmse2",
+            "nll",
+            "miscalibration_area",
+            "ence",
+        ]
+        writer.writerow(header)
+        for i in range(len(cv)):
+            new_row = [
+                active_args.train_sizes[i],
+                spearmans[i],
+                cv[i],
+                sharpness[i],
+                sharpness_root[i],
+                rmses[i],
+                rmses2[i],
+                nll[i],
+                miscalibration_area[i],
+                ence[i],
+            ]
+            writer.writerow(new_row)
+#@profile
 def morgan_fingerprint(nontest_data:MoleculeDataset,active_args:ActiveArgs) -> Tuple[MoleculeDataset]:
     nontest_smiles = nontest_data.smiles()
     morgan_fps = []
@@ -1399,11 +1868,164 @@ def morgan_fingerprint(nontest_data:MoleculeDataset,active_args:ActiveArgs) -> T
     sorted_scores_indices=[nontest_smiles.index(value) for value in test_smiles] # get indices of sorted similarity scores
     return sorted_scores_indices
     
+#@profile
+def kmeans_function(X, n_clusters, max_iters=300, tol=1e-4):
+    X = np.array(X)  # Convert the nested list to a NumPy array
+    # Step 1: Initialize centroids randomly
+    np.random.seed(0)
+    centroids = X[np.random.choice(len(X), size=n_clusters, replace=False)]
+    
+    for _ in range(max_iters):
+        # Step 2: Assign data points to the nearest centroid
+        distances = np.zeros((len(X), n_clusters))  # Initialize an array to store distances
+        
+        for k in range(n_clusters):
+            for i in range(len(X)):
+                distances[i, k] = np.linalg.norm(X[i] - centroids[k])
+        
+        labels = np.argmin(distances, axis=1)
+        
+        # Step 3: Update centroids
+        new_centroids = np.array([X[labels == k].mean(axis=0) for k in range(n_clusters)])
+        
+        # Check for convergence
+        if np.linalg.norm(new_centroids - centroids) < tol:
+            break
+        
+        centroids = new_centroids
+
+
+    return labels, centroids
 
 
 
+#@profile
+def get_fingerprint(previous_remaining_data:MoleculeDataset,active_args:ActiveArgs,gpu,i) -> Tuple[MoleculeDataset]:
+    previous_remaining_data = previous_remaining_data.smiles() # it has to change to remaining data
+    argument_input = [
+        "--test_path",
+        os.path.join(
+            active_args.active_save_dir,
+            f"train{active_args.train_sizes[i-1]}","remaining_full.csv"),
+        "--checkpoint_dir",
+        os.path.join(
+            active_args.active_save_dir,
+            f"train{active_args.train_sizes[i-1]}",
+            f"selection{active_args.train_sizes[i-1]}"),
+        "--preds_path",
+        os.path.join(active_args.active_save_dir, "finger_print.csv"),
+        "--num_workers",0
+    ]
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    fp_args = FingerprintArgs().parse_args(argument_input)
+    x=molecule_fingerprint(fp_args)
+    del x
 
+    lists_per_row = []
+    with open(os.path.join(active_args.active_save_dir, "finger_print.csv")) as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)
+        lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+    lists_per_row=np.array(lists_per_row)
+    mean = np.mean(lists_per_row, axis=0)
+    std_dev = np.std(lists_per_row, axis=0)
+    standardized_data = (lists_per_row - mean) / std_dev
 
+    # replace nan with 0
+    # standardized_data = [[0 if math.isnan(x) else x for x in sublist] for sublist in standardized_data]
+    nan_indices = np.isnan(standardized_data[0])
+
+    standardized_data = standardized_data[:, ~nan_indices]
+    kmeans = KMeans(n_clusters=active_args.active_batch_size,random_state=0)
+    cluster_labels = kmeans.fit_predict(standardized_data)
+    cluster_assignments = kmeans.predict(standardized_data)
+    distances = cdist(standardized_data, kmeans.cluster_centers_, 'euclidean')
+    closest_points_indices = [distances[:, i].argmin() for i in range(active_args.active_batch_size)]
+    closest_points = [standardized_data[i] for i in closest_points_indices] 
+    smiles=[]
+    adding_fp=[]
+    smiles=[previous_remaining_data[i] for i in closest_points_indices]
+    with open(
+            os.path.join(active_args.iter_save_dir, "added_fp.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(adding_fp)
+    with open(
+            os.path.join(active_args.iter_save_dir, "added_smiles.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(smiles)
+    with open(
+            os.path.join(active_args.iter_save_dir, "closest_points.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(closest_points)
+    with open(
+            os.path.join(active_args.iter_save_dir, "scaled_data.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(standardized_data)
+    del standardized_data
+    del closest_points
+    del adding_fp
+    del lists_per_row
+
+    assert len(smiles)==active_args.active_batch_size, f"Smiles: {len(smiles)}, Active batch size: {active_args.active_batch_size}"
+    return smiles
+
+def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu) -> Tuple[MoleculeDataset]:
+    nontest_smiles = nontest_data.smiles() 
+    
+    argument_input = [
+        "--test_path",
+        os.path.join(
+            active_args.active_save_dir,"nontest_full.csv"),
+        "--checkpoint_dir",
+        os.path.join(
+            active_args.active_save_dir,
+            "init"),
+        "--preds_path",
+        os.path.join(active_args.active_save_dir, "init_finger_print.csv"),
+        "--num_workers",0
+    ]
+    if gpu is not None:
+        argument_input.extend(["--gpu", str(gpu)])
+    fp_args = FingerprintArgs().parse_args(argument_input)
+    x=molecule_fingerprint(fp_args)
+    del x
+
+    lists_per_row = []
+    with open(os.path.join(active_args.active_save_dir, "init_finger_print.csv")) as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)
+        lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+    lists_per_row=np.array(lists_per_row)
+    mean = np.mean(lists_per_row, axis=0)
+    std_dev = np.std(lists_per_row, axis=0)
+    standardized_data = (lists_per_row - mean) / std_dev
+
+    nan_indices = np.isnan(standardized_data[0])
+
+    standardized_data = standardized_data[:, ~nan_indices]
+    kmeans = KMeans(n_clusters=active_args.initial_trainval_size,random_state=0)
+    cluster_labels = kmeans.fit_predict(standardized_data)
+    cluster_assignments = kmeans.predict(standardized_data)
+    distances = cdist(standardized_data, kmeans.cluster_centers_, 'euclidean')
+    closest_points_indices = [distances[:, i].argmin() for i in range(active_args.active_batch_size)]
+    closest_points = [standardized_data[i] for i in closest_points_indices] 
+    smiles=[]
+    adding_fp=[]
+    smiles=[nontest_smiles[i] for i in closest_points_indices]
+    return smiles
 
 
 

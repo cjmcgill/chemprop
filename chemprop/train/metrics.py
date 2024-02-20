@@ -116,6 +116,9 @@ def rmse(targets: List[float], preds: List[float]) -> float:
     :param preds: A list of predictions.
     :return: The computed rmse.
     """
+    # print('------------------------------------------')
+    # print(targets, preds)
+    # print('------------------------------------------')
     return mean_squared_error(targets, preds, squared=False)
 
 
