@@ -4,7 +4,7 @@ from typing import Iterator, List
 import numpy as np
 from chemprop.data.data import MoleculeDataLoader
 from scipy.special import erfinv, softmax, logit, expit
-from scipy.optimize import fmin
+from scipy.optimize import fmin,least_squares
 from scipy.stats import t
 from sklearn.isotonic import IsotonicRegression
 
@@ -34,6 +34,7 @@ class UncertaintyCalibrator(ABC):
         dataset_type: str,
         loss_function: str,
         uncertainty_dropout_p: float,
+        conformal_alpha: float,
         dropout_sampling_size: int,
         spectra_phase_mask: List[List[bool]],
     ):
@@ -45,6 +46,7 @@ class UncertaintyCalibrator(ABC):
         self.uncertainty_method = uncertainty_method
         self.loss_function = loss_function
         self.num_models = num_models
+        self.conformal_alpha = conformal_alpha
 
         self.raise_argument_errors()
 
@@ -58,6 +60,7 @@ class UncertaintyCalibrator(ABC):
             loss_function=loss_function,
             uncertainty_method=uncertainty_method,
             uncertainty_dropout_p=uncertainty_dropout_p,
+            conformal_alpha=conformal_alpha,
             dropout_sampling_size=dropout_sampling_size,
             individual_ensemble_predictions=False,
             spectra_phase_mask=spectra_phase_mask,
@@ -966,7 +969,7 @@ def build_uncertainty_calibrator(
             num_models=num_models,
             dataset_type=dataset_type,
             loss_function=loss_function,
-            uncertainty_dropout_p=uncertainty_dropout_p,
+            uncertainty_dropout_p=uncertainty_dropout_p
             dropout_sampling_size=dropout_sampling_size,
             spectra_phase_mask=spectra_phase_mask,
         )
