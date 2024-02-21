@@ -1524,7 +1524,8 @@ def build_uncertainty_predictor(
         "evidential_aleatoric": EvidentialAleatoricPredictor,
         "dropout": DropoutPredictor,
         "spectra_roundrobin": RoundRobinSpectraPredictor,
-        "conformal_quantile_regression": ConformalQuantileRegressionPredictor,
+        # "conformal_quantile_regression": ConformalQuantileRegressionPredictor,
+        "quantile_interval": ConformalQuantileRegressionPredictor,
         "conformal_regression": ConformalRegressionPredictor,
     }
 
