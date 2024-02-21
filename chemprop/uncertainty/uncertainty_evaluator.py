@@ -632,6 +632,66 @@ class SpearmanEvaluator(UncertaintyEvaluator):
         return spearman_coeffs
 
 
+class ConformalRegressionEvaluator(UncertaintyEvaluator):
+    """
+    A class for evaluating the coverage of conformal regression intervals.
+    """
+
+    def raise_argument_errors(self):
+        super().raise_argument_errors()
+        if self.dataset_type != "regression":
+            raise ValueError(
+                "Conformal Regression Evaluator is only for regression dataset types."
+            )
+
+    def evaluate(
+        self,
+        targets: List[List[float]],  # shape (data, tasks)
+        preds: List[List[float]],
+        uncertainties: List[List[float]],  # shape (data, 2*tasks)
+        mask: List[List[bool]],
+    ):
+        """
+        Args:
+            targets: shape(data, tasks)
+            preds: shape(data, tasks)
+            uncertainties: shape(data, 2*tasks)
+            mask: shape(data, tasks)
+        Returns:
+            Conformal coverage for each task
+        """
+        uncertainties = np.array(uncertainties)
+        preds = np.array(preds)
+        targets = np.array(targets)
+        mask = np.array(mask)
+        num_tasks = uncertainties.shape[1] // 2
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            preds = np.array(list(zip(*preds)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+
+        results = []
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            unc_task_lower = uncertainties[i][task_mask]
+            unc_task_upper = uncertainties[i + num_tasks][task_mask]
+            task_targets = targets[i][task_mask]
+            task_results = np.logical_and(unc_task_lower <= task_targets, task_targets <= unc_task_upper)
+            results.append(task_results.sum() / task_results.shape[0])
+
+        return results
+
+
+
+
+
+
+
 def build_uncertainty_evaluator(
     evaluation_method: str,
     calibration_method: str,
@@ -658,8 +718,9 @@ def build_uncertainty_evaluator(
         "sharpness": SharpnessEvaluator,
         "sharpness_root": Sharpness_rootEvaluator,
         "cv": CoefficientVarianceEvaluator,
-        "rmse": RMSEEvaluator
-    }
+        "rmse": RMSEEvaluator,
+        "conformal_coverage": {"regression": ConformalRegressionEvaluator,}[dataset_type],
+        }
 
     classification_metrics = [
         "auc",
