@@ -969,7 +969,7 @@ def build_uncertainty_calibrator(
             num_models=num_models,
             dataset_type=dataset_type,
             loss_function=loss_function,
-            uncertainty_dropout_p=uncertainty_dropout_p
+            uncertainty_dropout_p=uncertainty_dropout_p,
             dropout_sampling_size=dropout_sampling_size,
             spectra_phase_mask=spectra_phase_mask,
         )
