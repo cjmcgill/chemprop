@@ -907,6 +907,7 @@ class PredictArgs(CommonArgs):
         'classification',
         'dropout',
         'spectra_roundrobin',
+        'quantile_interval',
     ] = None
     """The method of calculating uncertainty."""
     calibration_method: Literal[
