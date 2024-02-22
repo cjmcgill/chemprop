@@ -218,6 +218,8 @@ def predict_and_save(
 
     if evaluators is not None:
         evaluations = []
+        if args.loss_function == "quantile_interval":
+            task_names = task_names[:len(task_names) // 2]
         print(f"Evaluating uncertainty for tasks {task_names}")
         for evaluator in evaluators:
             evaluation = evaluator.evaluate(
@@ -282,10 +284,16 @@ def predict_and_save(
 
                 for column, smiles in zip(smiles_columns, datapoint.smiles):
                     datapoint.row[column] = smiles
-
+            print('-------------------')
+            print(args.uncertainty_method)
+            print('-------------------')
             # Add predictions columns
             if args.uncertainty_method == "spectra_roundrobin":
                 unc_names = [estimator.label]
+            elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
+                unc_names = [task_name + "_quantile_" + str(args.conformal_alpha / 2) for task_name in task_names] + [
+                    task_name + "_quantile_" + str(1 - args.conformal_alpha / 2) for task_name in task_names
+                ]
             else:
                 unc_names = [name + f"_{estimator.label}" for name in task_names]
 

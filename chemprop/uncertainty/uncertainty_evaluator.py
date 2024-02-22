@@ -130,6 +130,12 @@ class NLLRegressionEvaluator(UncertaintyEvaluator):
                 targets = np.array(list(zip(*targets)))
             nll = []
             for i in range(num_tasks):
+                print('-----------------------------------')
+                print(f'uncertainties[{i}]',uncertainties[i])
+                print(f'targets[{i}]',targets[i])
+                print(f'preds[{i}]',preds[i])
+                print(num_tasks)
+                print('-----------------------------------')
                 task_mask = mask[i]
                 task_unc = uncertainties[i][task_mask]
                 task_preds = preds[i][task_mask]
