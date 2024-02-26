@@ -284,16 +284,19 @@ def predict_and_save(
 
                 for column, smiles in zip(smiles_columns, datapoint.smiles):
                     datapoint.row[column] = smiles
-            print('-------------------')
-            print(args.uncertainty_method)
-            print('-------------------')
             # Add predictions columns
             if args.uncertainty_method == "spectra_roundrobin":
                 unc_names = [estimator.label]
             elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
+
                 unc_names = [task_name + "_quantile_" + str(args.conformal_alpha / 2) for task_name in task_names] + [
                     task_name + "_quantile_" + str(1 - args.conformal_alpha / 2) for task_name in task_names
                 ]
+                print('------------------------------')
+                print(unc_names)
+                print(zip(task_names, unc_names, d_preds, d_unc))
+                print('------------------------------')
+                assert False
             else:
                 unc_names = [name + f"_{estimator.label}" for name in task_names]
 
