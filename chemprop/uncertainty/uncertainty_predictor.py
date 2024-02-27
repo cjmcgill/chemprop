@@ -369,6 +369,9 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
         return preds
 
     def calculate_predictions(self):
+        alpha = self.conformal_alpha
+        quantile_distance = ...
+
         for i, (model, scaler_list) in enumerate(
             tqdm(zip(self.models, self.scalers), total=self.num_models)
         ):
@@ -441,13 +444,15 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
             )
         else:
             uncal_preds = sum_preds / self.num_models
+            self.uncal_vars = (uncal_preds[:,1] - uncal_preds[:,0])**2 / quantile_distance**2
+    
             self.uncal_intervals = self.make_intervals(uncal_preds.T).T
             if self.individual_ensemble_predictions:
                 self.individual_preds = individual_preds.tolist()
             self.uncal_preds = self.reformat_preds(uncal_preds)
 
     def get_uncal_output(self):
-        return self.uncal_intervals
+        return self.uncal_vars
 
 
 class ConformalRegressionPredictor(ConformalQuantileRegressionPredictor):
