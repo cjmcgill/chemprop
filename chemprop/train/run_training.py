@@ -181,6 +181,12 @@ def run_training(args: TrainArgs,
             else:
                 unscaled_target_indices = None
             scaler = train_data.normalize_targets(unscaled_target_indices)
+            if args.vle in ["wohl", "activity"]:
+                hybrid_model_features_scaler = train_data.normalize_matched_hybrid_features(
+                    target_scaler=scaler,
+                    hybrid_model_features_indices=[2],
+                    corresponding_target_indices=[2],
+                )
             atom_bond_scaler = None
         args.spectra_phase_mask = None
     elif args.dataset_type == 'spectra':

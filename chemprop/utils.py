@@ -703,7 +703,7 @@ def save_smiles_splits(
                         T = dataset_features
                     else:
                         T = dataset_features[:, [2]]
-                    log10psat = np.log10(hybrid_model_features[:, 2:])
+                    log10psat = hybrid_model_features[:, 2:]
                     dataset_features = np.concatenate((xs, T, log10psat), axis=1)
             else:
                 dataset_features = dataset.features()

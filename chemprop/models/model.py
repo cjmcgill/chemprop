@@ -350,8 +350,8 @@ class MoleculeModel(nn.Module):
                 # print(hybrid_model_features_batch)
                 x_1 = hybrid_model_features_batch[:,0].unsqueeze(-1)
                 x_2 = hybrid_model_features_batch[:,1].unsqueeze(-1)
-                p1sat = hybrid_model_features_batch[:,2].unsqueeze(-1)
-                p2sat = hybrid_model_features_batch[:,3].unsqueeze(-1)
+                log10p1sat = hybrid_model_features_batch[:,2].unsqueeze(-1)
+                log10p2sat = hybrid_model_features_batch[:,3].unsqueeze(-1)
                 if self.vle == "activity":
                     gamma_1 = torch.exp(output[:,0].unsqueeze(-1))
                     gamma_2 = torch.exp(output[:,1].unsqueeze(-1))
@@ -369,6 +369,8 @@ class MoleculeModel(nn.Module):
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     )
+                p1sat = 10**log10p1sat
+                p2sat = 10**log10p2sat
                 P1 = p1sat * x_1 * gamma_1
                 P2 = p2sat * x_2 * gamma_2
                 P = P1 + P2
