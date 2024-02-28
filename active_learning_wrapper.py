@@ -251,11 +251,9 @@ def active_learning(active_args: ActiveArgs):
             filename_base="training_set",
             active_args=active_args,
         )
-        
         update_train_args(active_args=active_args, train_args=train_args)
         if not active_args.no_comparison_model:
             update_train_args2(active_args=active_args, train_args=train_args2)
-        
         cross_validate(args=train_args, train_func=run_training)
         if not active_args.no_comparison_model:
             cross_validate(args=train_args2, train_func=run_training)
@@ -405,6 +403,9 @@ def get_initial_train_args(
         commandline_inputs.extend(["--save_dir", os.path.join(save_dir, "init")])
         commandline_inputs.extend(["--split_sizes", "1", "0" ,"0"])
         commandline_inputs.extend(["--separate_val_path", os.path.join(save_dir, "test_full.csv")])
+    elif "--split_sizes" in commandline_inputs:
+        commandline_inputs.remove("--split_sizes")
+        commandline_inputs.remove("--separate_val_path")
     if search_function == "mve":
         commandline_inputs.extend(["--loss_function", "mve"])
     elif search_function == "mve_ensemble":
@@ -687,14 +688,13 @@ def initial_trainval_split(
     elif active_args.initial_trainval_type == "model_fp":
         smiles=get_fingerprint_init(nontest_data=nontest_data,active_args=active_args,gpu=active_args.gpu)
         smiles_=MoleculeDataset.smiles(nontest_data) 
-        print('------------------------------------')
-        print(len(smiles))
-        print(len(smiles_))
-        print(active_args.initial_trainval_size)
-        print('------------------------------------')
         new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
         trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
         remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        print('------------------------------------')
+        print(len(smiles))
+        print(active_args.initial_trainval_size)
+        print('------------------------------------')
         save_dataset_indices(
             indices=trainval_data,
             save_dir=active_args.active_save_dir,
@@ -2020,7 +2020,7 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     cluster_labels = kmeans.fit_predict(standardized_data)
     cluster_assignments = kmeans.predict(standardized_data)
     distances = cdist(standardized_data, kmeans.cluster_centers_, 'euclidean')
-    closest_points_indices = [distances[:, i].argmin() for i in range(active_args.active_batch_size)]
+    closest_points_indices = [distances[:, i].argmin() for i in range(active_args.initial_trainval_size)]
     closest_points = [standardized_data[i] for i in closest_points_indices] 
     smiles=[]
     adding_fp=[]
