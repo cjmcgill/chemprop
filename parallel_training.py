@@ -1290,18 +1290,14 @@ def mix_score(sp1, sp2, sp3, sp4, nll1, nll2, nll3, nll4, search_function1, sear
     if len(close_sp_functions) == 1:
         return close_sp_functions[0]
 
-    # If there are multiple functions close to the highest sp, compare based on nll values
-    # Zip and sort based on nll values in ascending order (lower is better)
-    sorted_nll_data = sorted(zip(nll_values, search_functions), key=lambda x: x[0])
+    min_name = None  # Initialize with None
 
-    # Get the lowest nll value
-    lowest_nll = sorted_nll_data[0][0]
+    for item in sorted_sp_data:
+        if item[2] in close_sp_functions:  # Check if the name is in the second list
+            if min_name is None or item[1] < min_name[1]:  # Update min_name if it's None or if found a smaller second number
+                min_name = item
 
-    # Get all search functions with nll values close to the lowest nll by one unit
-    close_nll_functions = [func for nll, func in sorted_nll_data if abs(lowest_nll - nll) <= 1]
-
-    # Return the first function in the close_nll_functions list (you can modify this logic if needed)
-    return close_nll_functions[0] if close_nll_functions else None
+    return min_name[2]
 
 
 
