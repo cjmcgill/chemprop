@@ -377,5 +377,5 @@ def quantile_loss(pred_values: torch.Tensor, targets: torch.Tensor, quantiles: t
     """
 
     error = pred_values - targets
-
+    
     return torch.max((1 - quantiles) * error, -quantiles * error)

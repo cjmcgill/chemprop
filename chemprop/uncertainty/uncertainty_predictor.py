@@ -346,7 +346,7 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
     @property
     def label(self):
         alpha = self.conformal_alpha
-        return f"task_quantile_{alpha}_uncal_var"
+        return f"_quantile_{alpha/2}_uncal_var", f"_quantile_{1-alpha/2}_uncal_var"
     def raise_argument_errors(self):
         super().raise_argument_errors()
         if self.dataset_type != "regression":
@@ -399,7 +399,6 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
                     self.test_data.normalize_features(
                         bond_descriptor_scaler, scale_bond_descriptors=True
                     )
-
             preds = predict(
                 model=model,
                 data_loader=self.test_data_loader,
@@ -444,7 +443,6 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
                 f"Uncertainty predictor type ConformalQuantileRegressionPredictor and ConformalRegressionPredictor are not currently supported for atom and bond properties prediction."
             )
         else:
-            uncal_preds = sum_preds / self.num_models
             uncal_preds = sum_preds / self.num_models
             self.uncal_vars = (uncal_preds[:,1] - uncal_preds[:,0])**2 / quantile_distance**2
             self.uncal_intervals = self.make_intervals(uncal_preds.T).T

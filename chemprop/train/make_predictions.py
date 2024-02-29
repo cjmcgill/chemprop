@@ -287,23 +287,24 @@ def predict_and_save(
             # Add predictions columns
             if args.uncertainty_method == "spectra_roundrobin":
                 unc_names = [estimator.label]
-            # elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
+            elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
+                unc_names = [name + f"{estimator.label[0]}" for name in task_names] + [name + f"{estimator.label[1]}" for name in task_names]
 
             #     unc_names = [task_name + "_quantile_" + str(args.conformal_alpha / 2) for task_name in task_names] + [
             #         task_name + "_quantile_" + str(1 - args.conformal_alpha / 2) for task_name in task_names
             #     ]
             
             else:
-                unc_names = [name + f"_{estimator.label}" for name in task_names]
+                unc_names = [name + f"_{estimator.label}" for name in task_names] + [name + f"_{estimator.label}" for name in task_names]
             print('------------------------------')
             print(unc_names)
             print(task_names)
             print(d_preds)
             print(d_unc)
             print('------------------------------')
-            assert False
+        
             for pred_name, unc_name, pred, un in zip(
-                task_names, unc_names, d_preds, d_unc
+                task_names, unc_names, d_preds, [d_unc]
             ):
                 datapoint.row[pred_name] = pred
                 if args.uncertainty_method is not None:

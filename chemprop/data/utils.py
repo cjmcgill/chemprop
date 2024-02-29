@@ -102,7 +102,7 @@ def get_task_names(
     target_names = [column for column in columns if column not in ignore_columns]
     if loss_function == "quantile_interval":
         target_names = target_names * 2
-
+    
     return target_names
 
 
