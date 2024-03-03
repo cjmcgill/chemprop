@@ -59,6 +59,9 @@ class UncertaintyEstimator:
         else:
             uncal_preds = self.predictor.get_uncal_preds()
             uncal_output = self.predictor.get_uncal_output()
+            if self.uncertainty_method == "quantile_interval":
+                uncal_preds=self.predictor.get_middle_point()
+                
             return uncal_preds, uncal_output
 
     def individual_predictions(self):

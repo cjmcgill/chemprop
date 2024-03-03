@@ -173,9 +173,9 @@ def predict_and_save(
         spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
     )
 
-    preds, unc = estimator.calculate_uncertainty(
+    preds, unc= estimator.calculate_uncertainty(
         calibrator=calibrator
-    )  # preds and unc are lists of shape(data,tasks)
+    )  # preds and unc are lists of shape(data,tasks)        
 
     if calibrator is not None and args.is_atom_bond_targets and args.calibration_method == "isotonic":
         unc = reshape_values(unc, test_data, len(args.atom_targets), len(args.bond_targets), num_tasks)
@@ -288,7 +288,7 @@ def predict_and_save(
             if args.uncertainty_method == "spectra_roundrobin":
                 unc_names = [estimator.label]
             elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
-                unc_names = [name + f"{estimator.label[0]}" for name in task_names] + [name + f"{estimator.label[1]}" for name in task_names]
+                unc_names = [name + f"{estimator.label}" for name in task_names]
 
             #     unc_names = [task_name + "_quantile_" + str(args.conformal_alpha / 2) for task_name in task_names] + [
             #         task_name + "_quantile_" + str(1 - args.conformal_alpha / 2) for task_name in task_names
@@ -302,9 +302,10 @@ def predict_and_save(
             print(d_preds)
             print(d_unc)
             print('------------------------------')
+            # assert False
         
             for pred_name, unc_name, pred, un in zip(
-                task_names, unc_names, d_preds, [d_unc]
+                task_names, unc_names, d_preds, d_unc
             ):
                 datapoint.row[pred_name] = pred
                 if args.uncertainty_method is not None:

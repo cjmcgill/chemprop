@@ -73,6 +73,7 @@ class UncertaintyPredictor(ABC):
         Calculate the uncalibrated predictions and store them as attributes
         """
 
+    
     def get_uncal_preds(self):
         """
         Return the predicted values for the test data.
@@ -346,7 +347,7 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
     @property
     def label(self):
         alpha = self.conformal_alpha
-        return f"_quantile_{alpha/2}_uncal_var", f"_quantile_{1-alpha/2}_uncal_var"
+        return f"_quantile_{alpha}_uncal_var"
     def raise_argument_errors(self):
         super().raise_argument_errors()
         if self.dataset_type != "regression":
@@ -449,9 +450,20 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
             if self.individual_ensemble_predictions:
                 self.individual_preds = individual_preds.tolist()
             self.uncal_preds = self.reformat_preds(uncal_preds)
+            self.middle_point= (uncal_preds[:,1] + uncal_preds[:,0])/2
+            self.middle_point = [[x] for x in self.middle_point]
+            self.uncal_vars = [[x] for x in self.uncal_vars]
+            self.uncal_preds= uncal_preds
+            
 
     def get_uncal_output(self):
         return self.uncal_vars
+    
+    def get_middle_point(self):
+        """
+        Return the middle point of the interval predictions.
+        """
+        return self.middle_point
 
 
 class ConformalRegressionPredictor(ConformalQuantileRegressionPredictor):
