@@ -290,7 +290,10 @@ def active_learning(active_args: ActiveArgs):
             save_whole_results=True,
             save_error=True,
         )
-        rmses.append(get_rmse(active_args=active_args))
+        if active_args.search_function == "quantile":
+            rmses.append(get_rmse_quantile(active_args=active_args))
+        else:
+            rmses.append(get_rmse(active_args=active_args))
         if not active_args.no_comparison_model:
             rmses2.append(get_rmse2(active_args=active_args))
         else:
@@ -323,22 +326,23 @@ def active_learning(active_args: ActiveArgs):
             ence,
             sharpness_root,
         )
-        (
-        spearman1_cal,
-            nll1_cal,
-            miscalibration_area1_cal,
-            ence1_cal,
-            sharpness1_cal,
-            shar_root1_cal,
-            cv1_cal,
-        ) = get_evaluation_scores_cal(active_args=active_args)
-        spearman_cal.append(spearman1_cal)
-        nll_cal.append(nll1_cal)
-        miscalibration_area_cal.append(miscalibration_area1_cal)
-        ence_cal.append(ence1_cal)
-        sharpness_cal.append(sharpness1_cal)
-        sharpness_root_cal.append(shar_root1_cal)
-        cv_cal.append(cv1_cal)
+        if active_args.search_function != "quantile":
+            (
+            spearman1_cal,
+                nll1_cal,
+                miscalibration_area1_cal,
+                ence1_cal,
+                sharpness1_cal,
+                shar_root1_cal,
+                cv1_cal,
+            ) = get_evaluation_scores_cal(active_args=active_args)
+            spearman_cal.append(spearman1_cal)
+            nll_cal.append(nll1_cal)
+            miscalibration_area_cal.append(miscalibration_area1_cal)
+            ence_cal.append(ence1_cal)
+            sharpness_cal.append(sharpness1_cal)
+            sharpness_root_cal.append(shar_root1_cal)
+            cv_cal.append(cv1_cal)
         save_evaluations_cal(
             active_args,
             spearman_cal,
@@ -1067,6 +1071,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
                 "rmse",
             ]
         )
+
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1406,6 +1411,11 @@ def get_pred_results(
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_dropout_uncal_var"])
+                elif search_function == "quantile":
+                    whole_data[i].output[
+                        j + f"_unc_{active_args.train_sizes[iteration]}"
+                    ] = float(line[j + "_quantile_alpha0.1_uncal_var"])
+
                 if save_error:
                     whole_data[i].output[
                         j + f"_error_{active_args.train_sizes[iteration]}"
@@ -1676,7 +1686,14 @@ def get_rmse(active_args):
             for j in active_args.task_names:
                 rmse = float(line["Mean rmse"])
     return rmse
-
+def get_rmse_quantile(active_args):
+    rmse = None
+    with open(os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r") as f:
+        reader = csv.DictReader(f)
+        for i, line in enumerate(reader):
+            if line['evaluation_method'] == 'rmse':
+                rmse = float(line['exp'])
+    return rmse
 
 # extract rmse of comparison model
 #@profile
@@ -1692,38 +1709,37 @@ def get_rmse2(active_args):
 # extract calculated evaluation scores by chemprop
 #@profile
 def get_evaluation_scores(active_args):
-    
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
-    ) as file:
-        csv_reader = csv.reader(file)
-        rows = list(csv_reader)
-        transposed_rows = list(zip(*rows))
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
-        "w",
-        newline="",
-    ) as file:
-        csv_writer = csv.writer(file)
-        csv_writer.writerows(transposed_rows)
+    if active_args.search_function != "random":
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+        ) as file:
+            csv_reader = csv.reader(file)
+            rows = list(csv_reader)
+            transposed_rows = list(zip(*rows))
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
+            "w",
+            newline="",
+        ) as file:
+            csv_writer = csv.writer(file)
+            csv_writer.writerows(transposed_rows)
 
-    with open(
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
-    ) as f:
-        reader = csv.DictReader(f)
-        for i, line in enumerate(tqdm(reader)):
-            for j in active_args.task_names:
-                spearmans = float(line["spearman"])
-                nlls = float(line["nll"])
-                miscalibration_areas = float(line["miscalibration_area"])
-                ences = float(line["ence"])
-                sharpness = float(line["sharpness"])
-                sharpness_root = float(line["sharpness_root"])
-                cv = float(line["cv"])
-                rmse= float(line["rmse"])
-    if active_args.search_function == "random":
+        with open(
+            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+        ) as f:
+            reader = csv.DictReader(f)
+            for i, line in enumerate(tqdm(reader)):
+                for j in active_args.task_names:
+                    spearmans = float(line["spearman"])
+                    nlls = float(line["nll"])
+                    miscalibration_areas = float(line["miscalibration_area"])
+                    ences = float(line["ence"])
+                    sharpness = float(line["sharpness"])
+                    sharpness_root = float(line["sharpness_root"])
+                    cv = float(line["cv"])
+    else:
         spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
-    return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv,rmse
+    return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv
 #@profile
 def get_evaluation_scores_cal(active_args):
     if active_args.search_function != "random":
