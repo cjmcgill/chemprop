@@ -356,6 +356,10 @@ class MoleculeModel(nn.Module):
                     gamma_1 = torch.exp(output[:,0].unsqueeze(-1))
                     gamma_2 = torch.exp(output[:,1].unsqueeze(-1))
                 else:  # vle == "wohl"
+                    # each term in the expansion is of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
+                    # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
+                    # and each term is d/dN1 [A * z**n1] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
+                    # TODO add T dependence
                     a12, a112, a122 = torch.split(output, output.shape[1] // 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
