@@ -23,6 +23,7 @@ from scipy.spatial.distance import cdist
 from datetime import datetime
 import pandas as pd
 from sklearn.metrics import pairwise_distances_argmin_min
+from collections import Counter
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
@@ -693,10 +694,6 @@ def initial_trainval_split(
         new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
         trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
         remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        print('------------------------------------')
-        print(len(smiles))
-        print(active_args.initial_trainval_size)
-        print('------------------------------------')
         save_dataset_indices(
             indices=trainval_data,
             save_dir=active_args.active_save_dir,
@@ -2025,11 +2022,13 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     nan_indices = np.isnan(standardized_data[0])
 
     standardized_data = standardized_data[:, ~nan_indices]
-    kmeans = KMeans(n_clusters=active_args.num_cv_seed,random_state=0)
+    kmeans = KMeans(n_clusters=active_args.num_cv_seed*2,random_state=0)
     cluster_labels = kmeans.fit_predict(standardized_data)
     cluster_assignments = kmeans.predict(standardized_data)
     cluster_centers = kmeans.cluster_centers_
-    adding_cluster_indices = np.where(cluster_labels == active_args.train_seed)[0]
+    label_counts = Counter(cluster_labels)
+    sorted_labels = sorted(label_counts, key=label_counts.get, reverse=True)
+    adding_cluster_indices = np.where(cluster_labels == sorted_labels[active_args.train_seed])[0]
     assert len(adding_cluster_indices) >= active_args.initial_trainval_size, f"Adding cluster indices: {len(adding_cluster_indices)}, Initial trainval size: {active_args.initial_trainval_size}"
     adding_cluster_data = standardized_data[adding_cluster_indices]
     distances_to_centroid = pairwise_distances_argmin_min(adding_cluster_data, cluster_centers[active_args.train_seed].reshape(1, -1))[1]
