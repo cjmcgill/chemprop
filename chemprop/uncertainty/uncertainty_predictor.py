@@ -347,7 +347,7 @@ class ConformalQuantileRegressionPredictor(UncertaintyPredictor):
     @property
     def label(self):
         alpha = self.conformal_alpha
-        return f"_quantile_{alpha}_uncal_var"
+        return f"_quantile_alpha{alpha}_uncal_var"
     def raise_argument_errors(self):
         super().raise_argument_errors()
         if self.dataset_type != "regression":

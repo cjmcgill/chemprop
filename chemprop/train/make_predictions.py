@@ -296,12 +296,6 @@ def predict_and_save(
             
             else:
                 unc_names = [name + f"_{estimator.label}" for name in task_names] + [name + f"_{estimator.label}" for name in task_names]
-            print('------------------------------')
-            print(unc_names)
-            print(task_names)
-            print(d_preds)
-            print(d_unc)
-            print('------------------------------')
             # assert False
         
             for pred_name, unc_name, pred, un in zip(
