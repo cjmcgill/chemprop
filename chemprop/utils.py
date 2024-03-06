@@ -48,6 +48,7 @@ def save_checkpoint(
     atom_descriptor_scaler: StandardScaler = None,
     bond_descriptor_scaler: StandardScaler = None,
     atom_bond_scaler: AtomBondScaler = None,
+    hybrid_model_features_scaler: StandardScaler = None,
     args: TrainArgs = None,
 ) -> None:
     """
@@ -78,6 +79,11 @@ def save_checkpoint(
         }
     if bond_descriptor_scaler is not None:
         bond_descriptor_scaler = {"means": bond_descriptor_scaler.means, "stds": bond_descriptor_scaler.stds}
+    if hybrid_model_features_scaler is not None:
+        hybrid_model_features_scaler = {
+            "means": hybrid_model_features_scaler.means,
+            "stds": hybrid_model_features_scaler.stds,
+        }
 
     state = {
         "args": args,
@@ -87,6 +93,7 @@ def save_checkpoint(
         "atom_descriptor_scaler": atom_descriptor_scaler,
         "bond_descriptor_scaler": bond_descriptor_scaler,
         "atom_bond_scaler": atom_bond_scaler,
+        "hybrid_model_features_scaler": hybrid_model_features_scaler,
     }
     torch.save(state, path)
 
@@ -457,7 +464,14 @@ def load_scalers(
     else:
         atom_bond_scaler = None
 
-    return scaler, features_scaler, atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler
+    if state["hybrid_model_features_scaler"] is not None:
+        hybrid_model_features_scaler = StandardScaler(
+            state["hybrid_model_features_scaler"]["means"], state["hybrid_model_features_scaler"]["stds"], replace_nan_token=0
+        )
+    else:
+        hybrid_model_features_scaler = None
+
+    return scaler, features_scaler, atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler, hybrid_model_features_scaler
 
 
 def load_args(path: str) -> TrainArgs:

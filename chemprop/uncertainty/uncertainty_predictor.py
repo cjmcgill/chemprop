@@ -126,6 +126,7 @@ class NoUncertaintyPredictor(UncertaintyPredictor):
                 atom_descriptor_scaler,
                 bond_descriptor_scaler,
                 atom_bond_scaler,
+                hybrid_model_features_scaler,
             ) = scaler_list
             if (
                 features_scaler is not None
@@ -143,11 +144,10 @@ class NoUncertaintyPredictor(UncertaintyPredictor):
                     self.test_data.normalize_features(
                         bond_descriptor_scaler, scale_bond_descriptors=True
                     )
-            _ = self.test_data.normalize_matched_hybrid_features(
-                target_scaler=scaler,
-                hybrid_model_features_indices=[2,3],
-                corresponding_target_indices=[2,2],
-            )
+                if hybrid_model_features_scaler is not None:
+                    self.test_data.normalize_hybrid_model_features(
+                        hybrid_model_features_scaler=hybrid_model_features_scaler,
+                    )
 
             preds = predict(
                 model=model,

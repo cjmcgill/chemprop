@@ -173,8 +173,8 @@ class MoleculeDatapoint:
             self.bond_features = np.where(np.isnan(self.bond_features), replace_token, self.bond_features)
 
         # Save a copy of the raw features and targets to enable different scaling later on
-        self.raw_features, self.raw_targets, self.raw_atom_targets, self.raw_bond_targets = \
-            self.features, self.targets, self.atom_targets, self.bond_targets
+        self.raw_features, self.raw_targets, self.raw_atom_targets, self.raw_bond_targets, self.raw_hybrid_model_features = \
+            self.features, self.targets, self.atom_targets, self.bond_targets, self.hybrid_model_features
         self.raw_atom_descriptors, self.raw_atom_features, self.raw_bond_descriptors, self.raw_bond_features = \
             self.atom_descriptors, self.atom_features, self.bond_descriptors, self.bond_features
 
@@ -306,8 +306,8 @@ class MoleculeDatapoint:
 
     def reset_features_and_targets(self) -> None:
         """Resets the features (atom, bond, and molecule) and targets to their raw values."""
-        self.features, self.targets, self.atom_targets, self.bond_targets = \
-            self.raw_features, self.raw_targets, self.raw_atom_targets, self.raw_bond_targets
+        self.features, self.targets, self.atom_targets, self.bond_targets, self.hybrid_model_features = \
+            self.raw_features, self.raw_targets, self.raw_atom_targets, self.raw_bond_targets, self.raw_hybrid_model_features
         self.atom_descriptors, self.atom_features, self.bond_descriptors, self.bond_features = \
             self.raw_atom_descriptors, self.raw_atom_features, self.raw_bond_descriptors, self.raw_bond_features
 
@@ -712,6 +712,13 @@ class MoleculeDataset(Dataset):
                 d.set_features(scaler.transform(d.raw_features.reshape(1, -1))[0])
 
         return scaler
+    
+    def normalize_hybrid_model_features(self, hybrid_model_features_scaler: StandardScaler):
+        if len(self._data) == 0 or (self._data[0].hybrid_model_features is None):
+            return None
+        else:
+            for d in self._data:
+                d.set_hybrid_model_features(hybrid_model_features_scaler.transform(d.raw_hybrid_model_features.reshape(1, -1))[0])
     
     def normalize_matched_hybrid_features(self, target_scaler: StandardScaler, replace_nan_token: int = 0,
                                            hybrid_model_features_indices=None, corresponding_target_indices=None) -> StandardScaler:

@@ -303,7 +303,7 @@ def run_training(args: TrainArgs,
         # Ensure that model is saved in correct location for evaluation if 0 epochs
         save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_descriptor_scaler,
-                        atom_bond_scaler, args)
+                        atom_bond_scaler, hybrid_model_features_scaler, args)
 
         # Optimizers
         optimizer = build_optimizer(model, args)
@@ -367,7 +367,8 @@ def run_training(args: TrainArgs,
                     not args.minimize_score and mean_val_score > best_score:
                 best_score, best_epoch = mean_val_score, epoch
                 save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler,
-                                atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler, args)
+                                atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler,
+                                hybrid_model_features_scaler, args)
 
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
