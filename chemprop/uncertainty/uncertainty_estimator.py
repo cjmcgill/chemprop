@@ -20,6 +20,7 @@ class UncertaintyEstimator:
         dataset_type: str,
         loss_function: str,
         uncertainty_dropout_p: float,
+        conformal_alpha: float,
         dropout_sampling_size: int,
         individual_ensemble_predictions: bool,
         spectra_phase_mask: List[List[bool]],
@@ -36,6 +37,7 @@ class UncertaintyEstimator:
             dataset_type=dataset_type,
             loss_function=loss_function,
             uncertainty_dropout_p=uncertainty_dropout_p,
+            conformal_alpha=conformal_alpha,
             dropout_sampling_size=dropout_sampling_size,
             individual_ensemble_predictions=individual_ensemble_predictions,
             spectra_phase_mask=spectra_phase_mask,
@@ -57,6 +59,9 @@ class UncertaintyEstimator:
         else:
             uncal_preds = self.predictor.get_uncal_preds()
             uncal_output = self.predictor.get_uncal_output()
+            if self.uncertainty_method == "quantile_interval":
+                uncal_preds=self.predictor.get_middle_point()
+                
             return uncal_preds, uncal_output
 
     def individual_predictions(self):

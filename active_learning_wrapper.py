@@ -52,7 +52,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
         "evidential_aleatoric",
         "evidential_total",
         "dropout",
-        "hybrid"
+        "hybrid",
+        "quantile"
     ] = "random"
     """
     which function to use for choosing what molecules to add
@@ -262,7 +263,7 @@ def active_learning(active_args: ActiveArgs):
             cross_validate(args=train_args2, train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
         test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        if active_args.search_function != "random":
+        if active_args.search_function != "random" and active_args.search_function != "quantile":
             cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
             val_cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
         val_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
@@ -290,7 +291,10 @@ def active_learning(active_args: ActiveArgs):
             save_whole_results=True,
             save_error=True,
         )
-        rmses.append(get_rmse(active_args=active_args))
+        if active_args.search_function == "quantile":
+            rmses.append(get_rmse_quantile(active_args=active_args))
+        else:
+            rmses.append(get_rmse(active_args=active_args))
         if not active_args.no_comparison_model:
             rmses2.append(get_rmse2(active_args=active_args))
         else:
@@ -323,22 +327,23 @@ def active_learning(active_args: ActiveArgs):
             ence,
             sharpness_root,
         )
-        (
-        spearman1_cal,
-            nll1_cal,
-            miscalibration_area1_cal,
-            ence1_cal,
-            sharpness1_cal,
-            shar_root1_cal,
-            cv1_cal,
-        ) = get_evaluation_scores_cal(active_args=active_args)
-        spearman_cal.append(spearman1_cal)
-        nll_cal.append(nll1_cal)
-        miscalibration_area_cal.append(miscalibration_area1_cal)
-        ence_cal.append(ence1_cal)
-        sharpness_cal.append(sharpness1_cal)
-        sharpness_root_cal.append(shar_root1_cal)
-        cv_cal.append(cv1_cal)
+        if active_args.search_function != "quantile":
+            (
+            spearman1_cal,
+                nll1_cal,
+                miscalibration_area1_cal,
+                ence1_cal,
+                sharpness1_cal,
+                shar_root1_cal,
+                cv1_cal,
+            ) = get_evaluation_scores_cal(active_args=active_args)
+            spearman_cal.append(spearman1_cal)
+            nll_cal.append(nll1_cal)
+            miscalibration_area_cal.append(miscalibration_area1_cal)
+            ence_cal.append(ence1_cal)
+            sharpness_cal.append(sharpness1_cal)
+            sharpness_root_cal.append(shar_root1_cal)
+            cv_cal.append(cv1_cal)
         save_evaluations_cal(
             active_args,
             spearman_cal,
@@ -413,6 +418,8 @@ def get_initial_train_args(
         commandline_inputs.extend(["--loss_function", "mve"])
     elif search_function == "mve_ensemble":
         commandline_inputs.extend(["--loss_function", "mve"])
+    elif search_function == "quantile":
+        commandline_inputs.extend(["--loss_function", "quantile_interval"])
     elif (
         search_function == "evidential"
         or search_function == "evidential_total"
@@ -1011,6 +1018,9 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_f
         argument_input.extend(["--uncertainty_method", "mve"])
     elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "quantile":
+        argument_input.extend(["--uncertainty_method", "quantile_interval"])
+        argument_input.extend(["--conformal_alpha" ,"0.1"])
     elif (
         search_function == "evidential_total"
         or search_function == "evidential"
@@ -1060,6 +1070,7 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
                 "rmse",
             ]
         )
+
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1080,6 +1091,9 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
         argument_input.extend(["--uncertainty_method", "mve"])
     elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "quantile":
+        argument_input.extend(["--uncertainty_method", "quantile_interval"])
+        argument_input.extend(["--conformal_alpha" ,"0.1"])
     elif (
         search_function == "evidential_total"
         or search_function == "evidential"
@@ -1149,6 +1163,9 @@ def cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
         argument_input.extend(["--uncertainty_method", "mve"])
     elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "quantile":
+        argument_input.extend(["--uncertainty_method", "quantile_interval"])
+        argument_input.extend(["--conformal_alpha" ,"0.1"])
     elif (
         search_function == "evidential_total"
         or search_function == "evidential"
@@ -1218,6 +1235,9 @@ def val_cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,searc
         argument_input.extend(["--uncertainty_method", "mve"])
     elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "quantile":
+        argument_input.extend(["--uncertainty_method", "quantile_interval"])
+        argument_input.extend(["--conformal_alpha" ,"0.1"])
     elif (
         search_function == "evidential_total"
         or search_function == "evidential"
@@ -1285,6 +1305,9 @@ def val_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
         argument_input.extend(["--uncertainty_method", "mve"])
     elif search_function == "mve_ensemble":
         argument_input.extend(["--uncertainty_method", "mve"])
+    elif search_function == "quantile":
+        argument_input.extend(["--uncertainty_method", "quantile_interval"])
+        argument_input.extend(["--conformal_alpha" ,"0.1"])
     elif (
         search_function == "evidential_total"
         or search_function == "evidential"
@@ -1387,6 +1410,11 @@ def get_pred_results(
                     whole_data[i].output[
                         j + f"_unc_{active_args.train_sizes[iteration]}"
                     ] = float(line[j + "_dropout_uncal_var"])
+                elif search_function == "quantile":
+                    whole_data[i].output[
+                        j + f"_unc_{active_args.train_sizes[iteration]}"
+                    ] = float(line[j + "_quantile_alpha0.1_uncal_var"])
+
                 if save_error:
                     whole_data[i].output[
                         j + f"_error_{active_args.train_sizes[iteration]}"
@@ -1657,7 +1685,14 @@ def get_rmse(active_args):
             for j in active_args.task_names:
                 rmse = float(line["Mean rmse"])
     return rmse
-
+def get_rmse_quantile(active_args):
+    rmse = None
+    with open(os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r") as f:
+        reader = csv.DictReader(f)
+        for i, line in enumerate(reader):
+            if line['evaluation_method'] == 'rmse':
+                rmse = float(line['exp'])
+    return rmse
 
 # extract rmse of comparison model
 #@profile
@@ -1702,7 +1737,7 @@ def get_evaluation_scores(active_args):
                     sharpness_root = float(line["sharpness_root"])
                     cv = float(line["cv"])
     else:
-            spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
+        spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv= 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
     return spearmans, nlls, miscalibration_areas, ences, sharpness, sharpness_root, cv
 #@profile
 def get_evaluation_scores_cal(active_args):

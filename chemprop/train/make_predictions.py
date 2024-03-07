@@ -167,14 +167,15 @@ def predict_and_save(
         dataset_type=args.dataset_type,
         loss_function=args.loss_function,
         uncertainty_dropout_p=args.uncertainty_dropout_p,
+        conformal_alpha=args.conformal_alpha,
         dropout_sampling_size=args.dropout_sampling_size,
         individual_ensemble_predictions=args.individual_ensemble_predictions,
         spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
     )
 
-    preds, unc = estimator.calculate_uncertainty(
+    preds, unc= estimator.calculate_uncertainty(
         calibrator=calibrator
-    )  # preds and unc are lists of shape(data,tasks)
+    )  # preds and unc are lists of shape(data,tasks)        
 
     if calibrator is not None and args.is_atom_bond_targets and args.calibration_method == "isotonic":
         unc = reshape_values(unc, test_data, len(args.atom_targets), len(args.bond_targets), num_tasks)
@@ -217,6 +218,8 @@ def predict_and_save(
 
     if evaluators is not None:
         evaluations = []
+        if args.loss_function == "quantile_interval":
+            task_names = task_names[:len(task_names) // 2]
         print(f"Evaluating uncertainty for tasks {task_names}")
         for evaluator in evaluators:
             evaluation = evaluator.evaluate(
@@ -281,13 +284,20 @@ def predict_and_save(
 
                 for column, smiles in zip(smiles_columns, datapoint.smiles):
                     datapoint.row[column] = smiles
-
             # Add predictions columns
             if args.uncertainty_method == "spectra_roundrobin":
                 unc_names = [estimator.label]
-            else:
-                unc_names = [name + f"_{estimator.label}" for name in task_names]
+            elif args.uncertainty_method == "quantile_interval" and args.calibration_method is None:
+                unc_names = [name + f"{estimator.label}" for name in task_names]
 
+            #     unc_names = [task_name + "_quantile_" + str(args.conformal_alpha / 2) for task_name in task_names] + [
+            #         task_name + "_quantile_" + str(1 - args.conformal_alpha / 2) for task_name in task_names
+            #     ]
+            
+            else:
+                unc_names = [name + f"_{estimator.label}" for name in task_names] + [name + f"_{estimator.label}" for name in task_names]
+            # assert False
+        
             for pred_name, unc_name, pred, un in zip(
                 task_names, unc_names, d_preds, d_unc
             ):

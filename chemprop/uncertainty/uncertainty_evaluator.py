@@ -129,7 +129,8 @@ class NLLRegressionEvaluator(UncertaintyEvaluator):
                 targets = targets.astype(float)
                 targets = np.array(list(zip(*targets)))
             nll = []
-            for i in range(num_tasks):
+            # for i in range(num_tasks):
+            for i in range(len(preds)):
                 task_mask = mask[i]
                 task_unc = uncertainties[i][task_mask]
                 task_preds = preds[i][task_mask]
@@ -260,7 +261,8 @@ class CalibrationAreaEvaluator(UncertaintyEvaluator):
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
         # using 101 bin edges, hardcoded
-        fractions = np.zeros([num_tasks, 101])  # shape(tasks, 101)
+        # fractions = np.zeros([num_tasks, 101])  # shape(tasks, 101)
+        fractions = np.zeros([len(preds), 101])  # shape(tasks, 101)
         fractions[:, 100] = 1
 
         if self.calibrator is not None:
@@ -276,7 +278,8 @@ class CalibrationAreaEvaluator(UncertaintyEvaluator):
                 self.calibrator.calibrate()
                 bin_scaling.append(self.calibrator.scaling)
 
-            for j in range(num_tasks):
+            # for j in range(num_tasks):
+            for j in range(len(preds)):
                 task_mask = mask[j]
                 task_targets = targets[j][task_mask]
                 task_preds = preds[j][task_mask]
@@ -297,7 +300,8 @@ class CalibrationAreaEvaluator(UncertaintyEvaluator):
             bin_scaling = [0]
             for i in range(1, 100):
                 bin_scaling.append(erfinv(i / 100) * np.sqrt(2))
-            for j in range(num_tasks):
+            # for j in range(num_tasks):
+            for j in range(len(preds)):
                 task_mask = mask[j]
                 task_targets = targets[j][task_mask]
                 task_preds = preds[j][task_mask]
@@ -365,10 +369,12 @@ class ExpectedNormalizedErrorEvaluator(UncertaintyEvaluator):
                 self.calibrator.regression_calibrator_metric = original_metric
                 self.calibrator.scaling = original_scaling
 
-        root_mean_vars = np.zeros([num_tasks, 100])  # shape(tasks, 100)
+        # root_mean_vars = np.zeros([num_tasks, 100])  # shape(tasks, 100)
+        root_mean_vars = np.zeros([len(preds), 100])  # shape(tasks, 100)
         rmses = np.zeros_like(root_mean_vars)
 
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]  # shape(data)
             task_targets = targets[i][task_mask]
             task_preds = preds[i][task_mask]
@@ -426,7 +432,8 @@ class RMSEEvaluator(UncertaintyEvaluator):
             targets = targets.astype(float)
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]
             task_targets = targets[i][task_mask]
             task_preds = preds[i][task_mask]
@@ -486,7 +493,8 @@ class SharpnessEvaluator(UncertaintyEvaluator):
             targets = targets.astype(float)
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
             task_sha=np.mean(task_unc) 
@@ -531,7 +539,8 @@ class Sharpness_rootEvaluator(UncertaintyEvaluator):
             targets = targets.astype(float)
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
             task_sha=np.mean(task_unc)
@@ -576,7 +585,8 @@ class CoefficientVarianceEvaluator(UncertaintyEvaluator):
             targets = targets.astype(float)
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
             cvs=(np.sqrt((sum(np.array((np.sqrt(np.array(task_unc))-np.mean(task_unc))**2))/(len(np.array((np.sqrt(np.array(task_unc))-np.mean(task_unc))**2))-1))))/(np.mean(task_unc))
@@ -621,7 +631,8 @@ class SpearmanEvaluator(UncertaintyEvaluator):
             targets = targets.astype(float)
             targets = np.array(list(zip(*targets)))
             preds = np.array(list(zip(*preds)))
-        for i in range(num_tasks):
+        # for i in range(num_tasks):
+        for i in range(len(preds)):
             task_mask = mask[i]
             task_unc = uncertainties[i][task_mask]
             task_targets = targets[i][task_mask]
@@ -630,6 +641,66 @@ class SpearmanEvaluator(UncertaintyEvaluator):
             spmn = spearmanr(task_unc, task_error).correlation
             spearman_coeffs.append(spmn)
         return spearman_coeffs
+
+
+class ConformalRegressionEvaluator(UncertaintyEvaluator):
+    """
+    A class for evaluating the coverage of conformal regression intervals.
+    """
+
+    def raise_argument_errors(self):
+        super().raise_argument_errors()
+        if self.dataset_type != "regression":
+            raise ValueError(
+                "Conformal Regression Evaluator is only for regression dataset types."
+            )
+
+    def evaluate(
+        self,
+        targets: List[List[float]],  # shape (data, tasks)
+        preds: List[List[float]],
+        uncertainties: List[List[float]],  # shape (data, 2*tasks)
+        mask: List[List[bool]],
+    ):
+        """
+        Args:
+            targets: shape(data, tasks)
+            preds: shape(data, tasks)
+            uncertainties: shape(data, 2*tasks)
+            mask: shape(data, tasks)
+        Returns:
+            Conformal coverage for each task
+        """
+        uncertainties = np.array(uncertainties)
+        preds = np.array(preds)
+        targets = np.array(targets)
+        mask = np.array(mask)
+        num_tasks = uncertainties.shape[1] // 2
+        if self.is_atom_bond_targets:
+            uncertainties = [np.concatenate(x) for x in zip(*uncertainties)]
+            preds = [np.concatenate(x) for x in zip(*preds)]
+            targets = [np.concatenate(x) for x in zip(*targets)]
+        else:
+            uncertainties = np.array(list(zip(*uncertainties)))
+            preds = np.array(list(zip(*preds)))
+            targets = targets.astype(float)
+            targets = np.array(list(zip(*targets)))
+
+        results = []
+        for i in range(num_tasks):
+            task_mask = mask[i]
+            unc_task_lower = uncertainties[i][task_mask]
+            unc_task_upper = uncertainties[i + num_tasks][task_mask]
+            task_targets = targets[i][task_mask]
+            task_results = np.logical_and(unc_task_lower <= task_targets, task_targets <= unc_task_upper)
+            results.append(task_results.sum() / task_results.shape[0])
+
+        return results
+
+
+
+
+
 
 
 def build_uncertainty_evaluator(
@@ -658,8 +729,9 @@ def build_uncertainty_evaluator(
         "sharpness": SharpnessEvaluator,
         "sharpness_root": Sharpness_rootEvaluator,
         "cv": CoefficientVarianceEvaluator,
-        "rmse": RMSEEvaluator
-    }
+        "rmse": RMSEEvaluator,
+        "conformal_coverage": {"regression": ConformalRegressionEvaluator,}[dataset_type],
+        }
 
     classification_metrics = [
         "auc",
