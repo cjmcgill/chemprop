@@ -433,9 +433,7 @@ def get_data(path: str,
     
     # Make hybrid_model_features
     if args.vle in ["activity","wohl"] or args.antoine: # x1, x2, T, log10P1sat, log10P2sat
-        log10Psat = features_data[:, 3:5]
-        hybrid_model_features = np.concatenate([features_data[:, :2], log10Psat], axis=1) # x1, x2, log10Psat1, log10Psat2
-        sum_xs = np.sum(hybrid_model_features[:, :2], axis=1)
+        hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
     elif args.antoine:
         hybrid_model_features = features_data[:,[2]] # T only
     else:

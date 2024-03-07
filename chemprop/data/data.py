@@ -720,25 +720,26 @@ class MoleculeDataset(Dataset):
             for d in self._data:
                 d.set_hybrid_model_features(hybrid_model_features_scaler.transform(d.raw_hybrid_model_features.reshape(1, -1))[0])
     
-    def normalize_matched_hybrid_features(self, target_scaler: StandardScaler, replace_nan_token: int = 0,
-                                           hybrid_model_features_indices=None, corresponding_target_indices=None) -> StandardScaler:
+    def custom_normalize_hybrid_features(self, target_scaler: StandardScaler, replace_nan_token: int = 0,
+                                           matched_hybrid_model_features_indices=[], corresponding_target_indices=[],
+                                           scale_only_indices=[]) -> StandardScaler:
         """
         Normalizes the features of the dataset using a :class:`~chemprop.data.StandardScaler`.
         """
-        # make a scaler
-        # make a list of means and stds
-        # apply the means and stds to the scaler
-        # use the scaler to transform the features
         scaler = StandardScaler(replace_nan_token=replace_nan_token)
 
         # feature dims
-        n_features = len(self._data[0].hybrid_model_features)
+        hybrid_model_features = np.vstack([d.raw_hybrid_model_features for d in self._data])
+        n_features = hybrid_model_features.shape[1]
         scaler.means = np.zeros(n_features)
         scaler.stds = np.ones(n_features)
 
-        for i, idx in enumerate(hybrid_model_features_indices):
+        for i, idx in enumerate(matched_hybrid_model_features_indices):
             scaler.means[idx] = target_scaler.means[corresponding_target_indices[i]]
             scaler.stds[idx] = target_scaler.stds[corresponding_target_indices[i]]
+        
+        for i in scale_only_indices:
+            scaler.stds[i] = hybrid_model_features[:, i].mean()
 
         for d in self._data:
             d.set_hybrid_model_features(scaler.transform(d.hybrid_model_features.reshape(1, -1))[0])

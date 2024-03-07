@@ -712,13 +712,7 @@ def save_smiles_splits(
                 if hybrid_model_features.shape[1] == 1: # antoine
                     pass
                 else: # vle-activity or vle-wohl
-                    xs = hybrid_model_features[:, :2]
-                    if dataset_features.shape[1] == 1: # wohl
-                        T = dataset_features
-                    else:
-                        T = dataset_features[:, [2]]
-                    log10psat = hybrid_model_features[:, 2:]
-                    dataset_features = np.concatenate((xs, T, log10psat), axis=1)
+                    dataset_features = hybrid_model_features
             else:
                 dataset_features = dataset.features()
             if extension_sets == {'.csv'}:
