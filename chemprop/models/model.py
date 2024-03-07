@@ -344,7 +344,7 @@ class MoleculeModel(nn.Module):
                 y_1 = self.sigmoid(logity_1)
                 y_2 = 1 - y_1
                 output = torch.cat([y_1, y_2, log10P], axis=1)
-            else:  # vle in ["activity", "wohl"] # x1 x2 P1sat P2sat
+            else:  # vle in ["activity", "wohl"] # x1 x2 T P1sat P2sat
                 hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
                 # print(hybrid_model_features_batch.shape)
                 # print(hybrid_model_features_batch)
@@ -364,16 +364,16 @@ class MoleculeModel(nn.Module):
                     a12, a112, a122 = torch.split(output, output.shape[1] // 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
-                    gamma_1 = torch.exp(
+                    gamma_1 = torch.exp(1 / T * (
                         2*a12*z_1*z_2*q_1
                         + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**2*z_2*q_1 + 3*a112*z_1**2*z_2*q_1
                         +3*a122*z_2**3*q_1 - 6*a122*z_1*z_2**2*q_1 + 3*a122*z_1*z_2**2*q_1
-                    )
-                    gamma_2 = torch.exp(
+                    ))
+                    gamma_2 = torch.exp(1 / T * (
                         2*a12*z_2*z_1*q_2
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
-                    )
+                    ))
                 p1sat = 10**log10p1sat
                 p2sat = 10**log10p2sat
                 P1 = p1sat * x_1 * gamma_1
