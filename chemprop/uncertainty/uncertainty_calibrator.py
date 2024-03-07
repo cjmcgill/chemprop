@@ -924,6 +924,7 @@ def build_uncertainty_calibrator(
     dataset_type: str,
     loss_function: str,
     uncertainty_dropout_p: float,
+    conformal_alpha: float,
     dropout_sampling_size: int,
     spectra_phase_mask: List[List[bool]],
 ) -> UncertaintyCalibrator:
@@ -970,6 +971,7 @@ def build_uncertainty_calibrator(
             dataset_type=dataset_type,
             loss_function=loss_function,
             uncertainty_dropout_p=uncertainty_dropout_p,
+            conformal_alpha=conformal_alpha,
             dropout_sampling_size=dropout_sampling_size,
             spectra_phase_mask=spectra_phase_mask,
         )
