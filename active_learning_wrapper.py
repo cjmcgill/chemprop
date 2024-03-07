@@ -420,6 +420,7 @@ def get_initial_train_args(
         commandline_inputs.extend(["--loss_function", "mve"])
     elif search_function == "quantile":
         commandline_inputs.extend(["--loss_function", "quantile_interval"])
+        commandline_inputs.extend(["--quantile_loss_alpha", "0.1"])
     elif (
         search_function == "evidential"
         or search_function == "evidential_total"
