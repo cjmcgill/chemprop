@@ -20,6 +20,8 @@ from rdkit.Chem import AllChem
 import math
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
+from sklearn.metrics import pairwise_distances_argmin_min
+from collections import Counter
 
 
 class ActiveArgs(Tap):
@@ -100,6 +102,9 @@ class ActiveArgs(Tap):
     selection_method: Literal["rmse","spearman","hybrid","nll","miscal","mix","multi"] = "rmse"
     hybrid_method: Literal["rmse","spearman","nll","miscal"] = "rmse"
     hybrid_count: int = 2
+    initial_trainval_type: Literal["random","model_fp"] = "random"
+    model_fp_path: str = None
+    num_cv_seed: int = 10
 
 def parallel_training(active_args: ActiveArgs):
     train_args = get_initial_train_args(
@@ -149,6 +154,18 @@ def parallel_training(active_args: ActiveArgs):
         save_test_nontest=False,
         save_indices=True
     )
+    if active_args.initial_trainval_type == "model_fp" and active_args.model_fp_path is None:
+        init_train_args= get_initial_train_args(
+            # active_args=active_args,
+            train_config_path=active_args.train_config_path,
+            data_path=os.path.join(active_args.active_save_dir, "nontest_full.csv"),
+            search_function=active_args.search_function,
+            gpu=active_args.gpu,
+            evidential_regularization=active_args.evidential_regularization,
+            # save_dir= active_args.active_save_dir
+        )
+        cross_validate(args=init_train_args, train_func=run_training)
+        makedirs(os.path.join(active_args.active_save_dir, "init"))
     trainval_data, remaining_data = initial_trainval_split(
         active_args=active_args,
         nontest_data=nontest_data,
@@ -559,16 +576,39 @@ def initial_trainval_split(
     ):
         active_args.initial_trainval_fraction = active_args.active_batch_size / num_data
     if active_args.initial_trainval_size is None:
-        active_args.initial_trainval_size = int(active_args.initial_trainval_fraction * num_data)
-     
-    fraction_trainval = (
-            active_args.initial_trainval_fraction * num_data / num_nontest
+       active_args.initial_trainval_size = int(active_args.initial_trainval_fraction * num_data)
+    if active_args.initial_trainval_type == "random":
+        fraction_trainval = (
+                active_args.initial_trainval_fraction * num_data / num_nontest
+            )
+        sizes = (fraction_trainval, 1 - fraction_trainval, 0)
+        trainval_data, remaining_data, _ = split_data(
+            data=nontest_data, split_type=active_args.split_type, sizes=sizes,seed=active_args.train_seed,
         )
-    sizes = (fraction_trainval, 1 - fraction_trainval, 0)
-    trainval_data, remaining_data, _ = split_data(
-        data=nontest_data, split_type=active_args.split_type, sizes=sizes,seed=active_args.train_seed,
-    )
-
+        if save_indices:
+            trainval_indices = {d.index for d in trainval_data}
+            remaining_indices = {d.index for d in remaining_data}
+            save_dataset_indices(
+                indices=trainval_indices,
+                save_dir=active_args.active_save_dir,
+                filename_base="initial_trainval",
+            )
+            save_dataset_indices(
+                indices=remaining_indices,
+                save_dir=active_args.active_save_dir,
+                filename_base="initial_remaining",
+            )
+    elif active_args.initial_trainval_type == "model_fp":
+        smiles=get_fingerprint_init(nontest_data=nontest_data,active_args=active_args,gpu=active_args.gpu)
+        smiles_=MoleculeDataset.smiles(nontest_data) 
+        new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
+        trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
+        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+        save_dataset_indices(
+            indices=trainval_data,
+            save_dir=active_args.active_save_dir,
+            filename_base="trainval",
+        ) 
     active_args.train_sizes = list(
         range(len(trainval_data), num_nontest + 1, active_args.active_batch_size)
     )
@@ -1417,6 +1457,63 @@ def get_fingerprint(previous_remaining_data:MoleculeDataset,active_args:ActiveAr
     del lists_per_row
 
     assert len(smiles)==active_args.active_batch_size, f"Smiles: {len(smiles)}, Active batch size: {active_args.active_batch_size}"
+    return smiles
+
+def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu) -> Tuple[MoleculeDataset]:
+    nontest_smiles = nontest_data.smiles() 
+    if active_args.model_fp_path is None:
+        argument_input = [
+            "--test_path",
+            os.path.join(
+                active_args.active_save_dir,"nontest_full.csv"),
+            "--checkpoint_dir",
+            os.path.join(
+                active_args.active_save_dir,
+                "init"),
+            "--preds_path",
+            os.path.join(active_args.active_save_dir, "init_finger_print.csv"),
+            "--num_workers",0
+        ]
+        if gpu is not None:
+            argument_input.extend(["--gpu", str(gpu)])
+        fp_args = FingerprintArgs().parse_args(argument_input)
+        x=molecule_fingerprint(fp_args)
+        del x
+
+        lists_per_row = []
+        with open(os.path.join(active_args.active_save_dir, "init_finger_print.csv")) as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)
+            lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+    elif active_args.model_fp_path is not None:
+        lists_per_row = []
+        with open(active_args.model_fp_path) as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)
+            lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+    
+    lists_per_row=np.array(lists_per_row)
+    mean = np.mean(lists_per_row, axis=0)
+    std_dev = np.std(lists_per_row, axis=0)
+    standardized_data = (lists_per_row - mean) / std_dev
+
+    nan_indices = np.isnan(standardized_data[0])
+
+    standardized_data = standardized_data[:, ~nan_indices]
+    kmeans = KMeans(n_clusters=active_args.num_cv_seed*2,random_state=0)
+    cluster_labels = kmeans.fit_predict(standardized_data)
+    cluster_assignments = kmeans.predict(standardized_data)
+    cluster_centers = kmeans.cluster_centers_
+    label_counts = Counter(cluster_labels)
+    sorted_labels = sorted(label_counts, key=label_counts.get, reverse=True)
+    adding_cluster_indices = np.where(cluster_labels == sorted_labels[active_args.train_seed])[0]
+    assert len(adding_cluster_indices) >= active_args.initial_trainval_size, f"Adding cluster indices: {len(adding_cluster_indices)}, Initial trainval size: {active_args.initial_trainval_size}"
+    adding_cluster_data = standardized_data[adding_cluster_indices]
+    distances_to_centroid = pairwise_distances_argmin_min(adding_cluster_data, cluster_centers[active_args.train_seed].reshape(1, -1))[1]
+    sorted_indices = np.argsort(distances_to_centroid)
+    adding_incides = adding_cluster_indices[sorted_indices][:active_args.initial_trainval_size]
+    smiles=[]
+    smiles=[nontest_smiles[i] for i in adding_incides]
     return smiles
 if __name__ == "__main__":
     parallel_training(ActiveArgs().parse_args())
