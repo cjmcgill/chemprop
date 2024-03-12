@@ -450,7 +450,7 @@ def get_data(path: str,
         if args.vle in ["basic", "activity"]:
             features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1) # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult, P1sat, P2sat, PRaoult
         else: # wohl
-            features_data = features_data[:,[2]] # T only
+            features_data = features_data[:,2:] # T, log10P1sat, log10P2sat
 
     # Load constraints
     if constraints_path is not None:
