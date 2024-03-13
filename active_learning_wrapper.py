@@ -1692,7 +1692,8 @@ def get_rmse_quantile(active_args):
         reader = csv.DictReader(f)
         for i, line in enumerate(reader):
             if line['evaluation_method'] == 'rmse':
-                rmse = float(line['exp'])
+                rmse = float(line[active_args.task_names[0]])
+
     return rmse
 
 # extract rmse of comparison model

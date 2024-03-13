@@ -10,8 +10,6 @@ from hyperopt import Trials, hp
 import numpy as np
 from chemprop.constants import HYPEROPT_SEED_FILE_NAME
 from chemprop.utils import makedirs
-from skopt import space
-from skopt import gp_minimize
 
 
 def build_search_space(search_parameters: List[str], train_epochs: int = None) -> dict:
