@@ -386,7 +386,7 @@ class MVEPredictor(UncertaintyPredictor):
                                 individual_preds[j][:, :, i] = pred
                         else:
                             individual_preds = np.expand_dims(np.array(preds), axis=-1)
-                elif self.ensemble_type == 'additive':
+            elif self.ensemble_type == 'additive':
                     sum_preds += np.array(preds)
                     sum_squared += np.square(preds)
                     sum_vars += np.array(var)

@@ -398,7 +398,7 @@ def stochastic_mve(pred_values, targets):
     # get random numbers from the normal (0,1) distribution
     randoms = torch.randn_like(pred_means)
     # apply noise scaled by the predicted var to get noisy predictions
-    preds = pred_means + randoms * random.randint(-1,1) * torch.sqrt(pred_var)
+    preds = pred_means + randoms * torch.sqrt(pred_var)
     # return mse loss of the noisy predictions
     return nn.functional.mse_loss(preds, targets, reduction="none")
 

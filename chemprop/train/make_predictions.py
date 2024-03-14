@@ -170,7 +170,7 @@ def predict_and_save(
         dropout_sampling_size=args.dropout_sampling_size,
         individual_ensemble_predictions=args.individual_ensemble_predictions,
         spectra_phase_mask=getattr(train_args, "spectra_phase_mask", None),
-        ensemble_type = args.ensemble_type
+        ensemble_type = args.ensemble_type,
     )
 
     preds, unc = estimator.calculate_uncertainty(
