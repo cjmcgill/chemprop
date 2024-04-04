@@ -175,6 +175,7 @@ def run_training(args: TrainArgs,
         if args.is_atom_bond_targets:
             scaler = None
             atom_bond_scaler = train_data.normalize_atom_bond_targets()
+            hybrid_model_features_scaler = None
         else:
             if args.vle is not None: # no scaling for y1 and y2
                 unscaled_target_indices = [0,1]
@@ -190,6 +191,8 @@ def run_training(args: TrainArgs,
                 )
                 val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
                 test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+            else:
+                hybrid_model_features_scaler = None
             atom_bond_scaler = None
         args.spectra_phase_mask = None
     elif args.dataset_type == 'spectra':
@@ -210,6 +213,7 @@ def run_training(args: TrainArgs,
         args.spectra_phase_mask = None
         scaler = None
         atom_bond_scaler = None
+        hybrid_model_features_scaler = None
 
     # Get loss function
     loss_func = get_loss_func(args)
