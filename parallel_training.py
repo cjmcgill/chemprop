@@ -1507,6 +1507,12 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     label_counts = Counter(cluster_labels)
     sorted_labels = sorted(label_counts, key=label_counts.get, reverse=True)
     adding_cluster_indices = np.where(cluster_labels == sorted_labels[active_args.train_seed])[0]
+    if len(adding_cluster_indices) < active_args.initial_trainval_size:
+        count= active_args.initial_trainval_size-len(adding_cluster_indices)
+        missing_from = [x for x in list(range(len(standardized_data))) if x not in adding_cluster_indices]
+        missing=random.sample(missing_from,count)
+        adding_cluster_indices = np.concatenate((adding_cluster_indices, missing))
+        
     assert len(adding_cluster_indices) >= active_args.initial_trainval_size, f"Adding cluster indices: {len(adding_cluster_indices)}, Initial trainval size: {active_args.initial_trainval_size}"
     adding_cluster_data = standardized_data[adding_cluster_indices]
     distances_to_centroid = pairwise_distances_argmin_min(adding_cluster_data, cluster_centers[active_args.train_seed].reshape(1, -1))[1]

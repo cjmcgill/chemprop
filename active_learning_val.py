@@ -24,6 +24,10 @@ from datetime import datetime
 import pandas as pd
 from sklearn.metrics import pairwise_distances_argmin_min
 from collections import Counter
+from scipy.stats import  spearmanr
+from scipy.special import erfinv
+
+
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
@@ -189,7 +193,7 @@ def active_learning(active_args: ActiveArgs):
         save_indices=True,
     )
     
-    # assert False
+    
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
     spearman_cal, cv_cal, sharpness_cal = [], [], []
@@ -233,130 +237,158 @@ def active_learning(active_args: ActiveArgs):
                 iteration=i,
                 data_selection=active_args.data_selection,
             )
-        validation_set, train_set,_  = split_data(
-            data=trainval_data,
-            sizes=(0.2, 0.8, 0),
-        )
-        
-        save_datainputs(
-            active_args=active_args,
-            trainval_data=trainval_data,
-            remaining_data=remaining_data,
-            test_data=test_data,
-        )
-        save_dataset(
-            data=validation_set,
-            save_dir=active_args.run_save_dir,
-            filename_base="validation_set",
-            active_args=active_args,
-        )
-        save_dataset(
-            data=train_set,
-            save_dir=active_args.run_save_dir,
-            filename_base="training_set",
-            active_args=active_args,
-        )
-        update_train_args(active_args=active_args, train_args=train_args)
-        if not active_args.no_comparison_model:
-            update_train_args2(active_args=active_args, train_args=train_args2)
-        cross_validate(args=train_args, train_func=run_training)
-        if not active_args.no_comparison_model:
-            cross_validate(args=train_args2, train_func=run_training)
-        run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        if active_args.search_function != "random" and active_args.search_function != "quantile":
-            cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-            val_cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        val_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        if not active_args.no_comparison_model:
-            run_predictions2(active_args=active_args, train_args=train_args2,gpu=active_args.gpu)
-        get_pred_results(
-            active_args=active_args,
-            whole_data=whole_data,
-            iteration=i,
-            search_function=active_args.search_function,
-            save_error=True,
-        )
-        if not active_args.no_comparison_model:
-            get_pred_results2(
+        fold_paths = []
+        for k in range(5):
+            validation_set, train_set,_  = split_data(
+                data=trainval_data,
+                seed=k,
+                sizes=(0.2, 0.8, 0),
+            )
+            active_args.fold_path = os.path.join(active_args.iter_save_dir, f"fold_{k}")
+            makedirs(active_args.fold_path)
+            save_datainputs(
+                active_args=active_args,
+                trainval_data=trainval_data,
+                remaining_data=remaining_data,
+                test_data=test_data,
+            )
+            save_dataset(
+                data=validation_set,
+                save_dir=active_args.fold_path,
+                filename_base="validation_set",
+                active_args=active_args,
+            )
+            save_dataset(
+                data=train_set,
+                save_dir=active_args.fold_path,
+                filename_base="training_set",
+                active_args=active_args,
+            )
+            update_train_args(active_args=active_args, train_args=train_args)
+            if not active_args.no_comparison_model and k == 0:
+                update_train_args2(active_args=active_args, train_args=train_args2)
+            cross_validate(args=train_args, train_func=run_training)
+            if not active_args.no_comparison_model and k == 0:
+                cross_validate(args=train_args2, train_func=run_training)
+            run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+            test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+            if active_args.search_function != "random" and active_args.search_function != "quantile":
+                cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+                val_cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+            val_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
+            if not active_args.no_comparison_model and k == 0:
+                run_predictions2(active_args=active_args, train_args=train_args2,gpu=active_args.gpu)
+            
+            get_pred_results(
                 active_args=active_args,
                 whole_data=whole_data,
                 iteration=i,
+                search_function=active_args.search_function,
+                save_error=True,
             )
-        save_results(
-            active_args=active_args,
-            test_data=test_data,
-            nontest_data=nontest_data,
-            whole_data=whole_data,
-            iteration=i,
-            save_whole_results=True,
-            save_error=True,
+            if not active_args.no_comparison_model and k == 0:
+                get_pred_results2(
+                    active_args=active_args,
+                    whole_data=whole_data,
+                    iteration=i,
+                )
+            save_results(
+                active_args=active_args,
+                test_data=test_data,
+                nontest_data=nontest_data,
+                whole_data=whole_data,
+                iteration=i,
+                save_whole_results=True,
+                save_error=True,
         )
-        if active_args.search_function == "quantile":
-            rmses.append(get_rmse_quantile(active_args=active_args))
-        else:
-            rmses.append(get_rmse(active_args=active_args))
-        if not active_args.no_comparison_model:
-            rmses2.append(get_rmse2(active_args=active_args))
-        else:
-            rmses2.append(None)
-        (
-            spearman1,
-            nll1,
-            miscalibration_area1,
-            ence1,
-            sharpness1,
-            shar_root1,
-            cv1,
-        ) = get_evaluation_scores(active_args=active_args)
-        spearman.append(spearman1)
-        nll.append(nll1)
-        miscalibration_area.append(miscalibration_area1)
-        ence.append(ence1)
-        sharpness.append(sharpness1)
-        sharpness_root.append(shar_root1)
-        cv.append(cv1)
-        save_evaluations(
-            active_args,
-            spearman,
-            cv,
-            rmses,
-            rmses2,
-            sharpness,
-            nll,
-            miscalibration_area,
-            ence,
-            sharpness_root,
-        )
-        if active_args.search_function != "quantile":
+            if active_args.search_function == "quantile":
+                rmses.append(get_rmse_quantile(active_args=active_args))
+            else:
+                rmses.append(get_rmse(active_args=active_args))
+            if not active_args.no_comparison_model and k == 0:
+                rmses2.append(get_rmse2(active_args=active_args))
+            else:
+                rmses2.append(None)
             (
-            spearman1_cal,
-                nll1_cal,
-                miscalibration_area1_cal,
-                ence1_cal,
-                sharpness1_cal,
-                shar_root1_cal,
-                cv1_cal,
-            ) = get_evaluation_scores_cal(active_args=active_args)
-            spearman_cal.append(spearman1_cal)
-            nll_cal.append(nll1_cal)
-            miscalibration_area_cal.append(miscalibration_area1_cal)
-            ence_cal.append(ence1_cal)
-            sharpness_cal.append(sharpness1_cal)
-            sharpness_root_cal.append(shar_root1_cal)
-            cv_cal.append(cv1_cal)
-        save_evaluations_cal(
-            active_args,
-            spearman_cal,
-            cv_cal,
-            rmses,
-            rmses2,
-            sharpness_cal,
-            nll_cal,
-            miscalibration_area_cal,
-            ence_cal,
-            sharpness_root_cal,
-        )
+                spearman1,
+                nll1,
+                miscalibration_area1,
+                ence1,
+                sharpness1,
+                shar_root1,
+                cv1,
+            ) = get_evaluation_scores(active_args=active_args)
+            spearman.append(spearman1)
+            nll.append(nll1)
+            miscalibration_area.append(miscalibration_area1)
+            ence.append(ence1)
+            sharpness.append(sharpness1)
+            sharpness_root.append(shar_root1)
+            cv.append(cv1)
+            save_evaluations(
+                active_args,
+                spearman,
+                cv,
+                rmses,
+                rmses2,
+                sharpness,
+                nll,
+                miscalibration_area,
+                ence,
+                sharpness_root,
+                k=k,
+            )
+            if active_args.search_function != "quantile":
+                (
+                spearman1_cal,
+                    nll1_cal,
+                    miscalibration_area1_cal,
+                    ence1_cal,
+                    sharpness1_cal,
+                    shar_root1_cal,
+                    cv1_cal,
+                ) = get_evaluation_scores_cal(active_args=active_args)
+                spearman_cal.append(spearman1_cal)
+                nll_cal.append(nll1_cal)
+                miscalibration_area_cal.append(miscalibration_area1_cal)
+                ence_cal.append(ence1_cal)
+                sharpness_cal.append(sharpness1_cal)
+                sharpness_root_cal.append(shar_root1_cal)
+                cv_cal.append(cv1_cal)
+                save_evaluations_cal(
+                    active_args,
+                    spearman_cal,
+                    cv_cal,
+                    rmses,
+                    rmses2,
+                    sharpness_cal,
+                    nll_cal,
+                    miscalibration_area_cal,
+                    ence_cal,
+                    sharpness_root_cal,
+                    k=k,
+                )
+            spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
+            nll, miscalibration_area, ence, sharpness_root = [], [], [], []
+            spearman_cal, cv_cal, sharpness_cal = [], [], []
+            nll_cal, miscalibration_area_cal, ence_cal, sharpness_root_cal = [], [], [], []
+            fold_paths.append(active_args.fold_path)
+        dfs=[]
+        dfs2=[]
+        for path in fold_paths:
+            file_path = os.path.join(path, 'val_pred.csv')
+            file_path2 = os.path.join(path, 'validation_set_full.csv')
+            df = pd.read_csv(file_path)
+            df2 = pd.read_csv(file_path2)
+            dfs.append(df)
+            dfs2.append(df2)
+        merged_val_preds=pd.concat(dfs, ignore_index=True)
+        merged_val_targets=pd.concat(dfs2, ignore_index=True)
+        merged_val_preds.to_csv(os.path.join(active_args.fold_path, '..','cv_val_preds.csv'), index=False)
+        merged_val_targets.to_csv(os.path.join(active_args.fold_path, '..','cv_val_targets.csv'), index=False)
+        val_metrics(active_args=active_args,path=active_args.fold_path)
+        assert False
+
         
         # cleanup_active_files(
         #     active_args=active_args,
@@ -918,10 +950,13 @@ def save_dataset_indices(indices: Set[int], save_dir: str, filename_base: str) -
 # train args that will use to train the selection model
 #@profile
 def update_train_args(active_args: ActiveArgs, train_args: TrainArgs) -> None:
-    train_args.save_dir = active_args.iter_save_dir
-    train_args.data_path = os.path.join(active_args.run_save_dir, "trainval_full.csv")
+    train_args.save_dir = active_args.fold_path
+    train_args.data_path = os.path.join(active_args.fold_path, "training_set_full.csv")
     train_args.separate_test_path = os.path.join(
         active_args.run_save_dir, "test_full.csv"
+    )
+    train_args.separate_val_path = os.path.join(
+        active_args.fold_path, "validation_set_full.csv"
     )
     if active_args.features_path is not None:
         train_args.features_path = [
@@ -979,11 +1014,11 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_f
         "--test_path",
         os.path.join(active_args.run_save_dir, "test_full.csv"),
         "--checkpoint_dir",
-        active_args.iter_save_dir,
+        active_args.fold_path,
         "--preds_path",
-        os.path.join(active_args.iter_save_dir, "test_preds.csv"),
+        os.path.join(active_args.fold_path, "test_preds.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
+        os.path.join(active_args.fold_path, "evaluation_scores.csv"),
 
     ]
     if active_args.search_function != "random":
@@ -1051,11 +1086,11 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
         "--test_path",
         os.path.join(active_args.active_save_dir, "whole_full.csv"),
         "--checkpoint_dir",
-        active_args.iter_save_dir,
+        active_args.fold_path,
         "--preds_path",
-        os.path.join(active_args.iter_save_dir, "whole_preds.csv"),
+        os.path.join(active_args.fold_path, "whole_preds.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores2.csv"),
+        os.path.join(active_args.fold_path, "evaluation_scores2.csv"),
 
     ]
     if active_args.search_function != "random":
@@ -1122,13 +1157,13 @@ def cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
         "--test_path",
         os.path.join(active_args.run_save_dir, "test_full.csv"),
         "--checkpoint_dir",
-        active_args.iter_save_dir,
+        active_args.fold_path,
         "--preds_path",
-        os.path.join(active_args.iter_save_dir, "test_pred_cal.csv"),
+        os.path.join(active_args.fold_path, "test_pred_cal.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"),
+        os.path.join(active_args.fold_path, "evaluation_scores_cal.csv"),
         "--calibration_method", "zscaling",
-        "--calibration_path", os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        "--calibration_path", os.path.join(active_args.fold_path, "validation_set_full.csv"),
 
     ]
     if active_args.search_function != "random":
@@ -1192,15 +1227,15 @@ def cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
 def val_cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
     argument_input = [
         "--test_path",
-        os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        os.path.join(active_args.fold_path, "validation_set_full.csv"),
         "--checkpoint_dir",
-        active_args.iter_save_dir,
+        active_args.fold_path,
         "--preds_path",
-        os.path.join(active_args.iter_save_dir, "val_pred_cal.csv"),
+        os.path.join(active_args.fold_path, "val_pred_cal.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores_cal_val.csv"),
+        os.path.join(active_args.fold_path, "evaluation_scores_cal_val.csv"),
         "--calibration_method", "zscaling",
-        "--calibration_path", os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        "--calibration_path", os.path.join(active_args.fold_path, "validation_set_full.csv"),
 
     ]
     if active_args.search_function != "random":
@@ -1264,13 +1299,13 @@ def val_cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,searc
 def val_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_function,iteration) -> None:
     argument_input = [
         "--test_path",
-        os.path.join(active_args.run_save_dir, "validation_set_full.csv"),
+        os.path.join(active_args.fold_path, "validation_set_full.csv"),
         "--checkpoint_dir",
-        active_args.iter_save_dir,
+        active_args.fold_path,
         "--preds_path",
-        os.path.join(active_args.iter_save_dir, "val_pred.csv"),
+        os.path.join(active_args.fold_path, "val_pred.csv"),
         "--evaluation_scores_path",
-        os.path.join(active_args.iter_save_dir, "evaluation_scores_val.csv"),
+        os.path.join(active_args.fold_path, "evaluation_scores_val.csv"),
 
     ]
     if active_args.search_function != "random":
@@ -1370,7 +1405,7 @@ def get_pred_results(
 ) -> None:
     if active_args.search_function == "hybrid":
         search_function = active_args.hybrid_method
-    with open(os.path.join(active_args.iter_save_dir, "whole_preds.csv"), "r") as f:
+    with open(os.path.join(active_args.fold_path, "whole_preds.csv"), "r") as f:
         reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
@@ -1681,7 +1716,7 @@ def cleanup_active_files2(
 # extract rmse of selection model
 #@profile
 def get_rmse(active_args):
-    with open(os.path.join(active_args.iter_save_dir, "test_scores.csv"), "r") as f:
+    with open(os.path.join(active_args.fold_path, "test_scores.csv"), "r") as f:
         reader = csv.DictReader(f)
         for i, line in enumerate(tqdm(reader)):
             for j in active_args.task_names:
@@ -1689,7 +1724,7 @@ def get_rmse(active_args):
     return rmse
 def get_rmse_quantile(active_args):
     rmse = None
-    with open(os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r") as f:
+    with open(os.path.join(active_args.fold_path, "evaluation_scores.csv"), "r") as f:
         reader = csv.DictReader(f)
         for i, line in enumerate(reader):
             if line['evaluation_method'] == 'rmse':
@@ -1713,13 +1748,13 @@ def get_rmse2(active_args):
 def get_evaluation_scores(active_args):
     if active_args.search_function != "random":
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+            os.path.join(active_args.fold_path, "evaluation_scores.csv"), "r"
         ) as file:
             csv_reader = csv.reader(file)
             rows = list(csv_reader)
             transposed_rows = list(zip(*rows))
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"),
+            os.path.join(active_args.fold_path, "evaluation_scores.csv"),
             "w",
             newline="",
         ) as file:
@@ -1727,7 +1762,7 @@ def get_evaluation_scores(active_args):
             csv_writer.writerows(transposed_rows)
 
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores.csv"), "r"
+            os.path.join(active_args.fold_path, "evaluation_scores.csv"), "r"
         ) as f:
             reader = csv.DictReader(f)
             for i, line in enumerate(tqdm(reader)):
@@ -1746,13 +1781,13 @@ def get_evaluation_scores(active_args):
 def get_evaluation_scores_cal(active_args):
     if active_args.search_function != "random":
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"), "r"
+            os.path.join(active_args.fold_path, "evaluation_scores_cal.csv"), "r"
         ) as file:
             csv_reader = csv.reader(file)
             rows = list(csv_reader)
             transposed_rows = list(zip(*rows))
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"),
+            os.path.join(active_args.fold_path, "evaluation_scores_cal.csv"),
             "w",
             newline="",
         ) as file:
@@ -1760,7 +1795,7 @@ def get_evaluation_scores_cal(active_args):
             csv_writer.writerows(transposed_rows)
 
         with open(
-            os.path.join(active_args.iter_save_dir, "evaluation_scores_cal.csv"), "r"
+            os.path.join(active_args.fold_path, "evaluation_scores_cal.csv"), "r"
         ) as f:
             reader = csv.DictReader(f)
             for i, line in enumerate(tqdm(reader)):
@@ -1789,9 +1824,10 @@ def save_evaluations(
     miscalibration_area,
     ence,
     sharpness_root,
+    k,
 ):
     with open(
-        os.path.join(active_args.active_save_dir, "uncertainty_evaluations.csv"),
+        os.path.join(active_args.active_save_dir, f"uncertainty_evaluations_{k}.csv"),
         "w",
         newline="",
     ) as f:
@@ -1836,9 +1872,10 @@ def save_evaluations_cal(
     miscalibration_area,
     ence,
     sharpness_root,
+    k,
 ):
     with open(
-        os.path.join(active_args.active_save_dir, "uncertainty_evaluations_cal.csv"),
+        os.path.join(active_args.active_save_dir, f"uncertainty_evaluations_cal_{k}.csv"),
         "w",
         newline="",
     ) as f:
@@ -2083,6 +2120,137 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     return smiles
 
 
+############# Metrics #############
+def spearman(target,pred,var):
+    target = np.array(target)
+    pred = np.array(pred)
+    error = np.abs(pred - target)
+    spmn = spearmanr(var, error).correlation
+    return spmn
+
+def coefficient_variance(target,pred,var):
+    var = np.array(var)
+    cv=(np.sqrt((sum(np.array((np.sqrt(np.array(var))-np.mean(var))**2))/(len(np.array((np.sqrt(np.array(var))-np.mean(var))**2))-1))))/(np.mean(var))
+    return cv
+
+def sharpness(target,pred,var):
+    var = np.array(var)
+    sharpness=np.mean(var)
+    return sharpness
+
+def nll(target,pred,var):
+    target=np.array(target)
+    pred = np.array(pred)
+    var = np.array(var)
+
+    error = np.abs(pred - target)
+    nll = np.log(2 * np.pi * var) / 2 + (error) ** 2 / (2 * var)
+    return nll.mean()
+
+
+
+def enh_ence(true_values, predicted_values, variance, num_bins=100):
+    true_values = np.array(true_values)
+    predicted_values = np.array(predicted_values)
+    variance = np.array(variance)
+    # Calculate the absolute errors
+    absolute_errors = np.abs(predicted_values - true_values)
+
+    # Sort the data based on variance
+    sort_idx = np.argsort(variance)
+    sorted_var = variance[sort_idx].copy()
+    sorted_errors = absolute_errors[sort_idx].copy()
+
+    # Split data into bins
+    split_vars = np.array_split(sorted_var, num_bins)
+    split_errors = np.array_split(sorted_errors, num_bins)
+
+    # Calculate root mean variance and root mean squared error for each bin
+    root_mean_vars = np.sqrt([np.mean(bin_vars) for bin_vars in split_vars])
+    rmses = np.sqrt([np.mean(np.square(bin_errors)) for bin_errors in split_errors])
+
+    # Calculate ENCE
+    ence_score = np.mean(np.abs(root_mean_vars - rmses) / (root_mean_vars + 1e-10))  # Add a small constant to avoid division by zero
+
+    return ence_score
+
+def miscal(target,pred,var,num_tasks):
+    target = np.array(target)
+    pred = np.array(pred)
+    var = np.array(var)
+    fractions = np.zeros([num_tasks, 101])  # shape(tasks, 101)
+    fractions[:, 100] = 1
+    bin_scaling = [0]
+
+    for i in range(1, 100):
+        bin_scaling.append(erfinv(i / 100) * np.sqrt(2))
+
+    error = np.abs(pred - target)
+
+    for i in range(1, 100):
+        bin_unc = np.sqrt(var) * bin_scaling[i]
+        bin_fraction = np.mean(bin_unc >= error)
+        fractions[0, i] = bin_fraction
+
+        # trapezoid rule
+        auce = np.sum(
+            0.01 * np.abs(fractions - np.expand_dims(np.arange(101) / 100, axis=0)),
+            axis=1,
+        )
+    return auce[0]
+
+def rmse_val(targets, preds):
+    preds = np.array(preds)
+    targets = np.array(targets)
+    rmse = np.sqrt(np.mean((preds - targets) ** 2))
+    return rmse
+
+def val_metrics(path,active_args):
+        file_path = os.path.join(os.path.dirname(path), 'cv_val_preds.csv')
+        file_path2 = os.path.join(os.path.dirname(path), 'cv_val_targets.csv')
+        df=pd.read_csv(file_path)
+        df2=pd.read_csv(file_path2)
+        preds=df.iloc[:,1].tolist()
+        targets=df2.iloc[:,1].tolist()
+        if active_args.search_function != "random" and active_args.search_function != "kmeans":
+            vars=df.iloc[:,2].tolist()
+            spearmans= spearman(targets,preds,vars)
+            cvs= coefficient_variance(targets,preds,vars)
+            sharp= sharpness(targets,preds,vars)
+            sharp_root= np.sqrt(sharp)
+            nlls= nll(targets,preds,vars)
+            ences= enh_ence(targets,preds,vars)
+            miscalibration_areas= miscal(targets,preds,vars,1)
+            rmses= rmse_val(targets,preds)
+        if active_args.no_comparison_model is False:
+            rmses2= get_rmse2(active_args)
+        else:
+            rmses2= rmses
+        if active_args.search_function == "random" or active_args.search_function == "kmeans":
+            spearmans, cvs, sharp,sharp_root, nlls, ences, miscalibration_areas = 'nan', 'nan', 'nan', 'nan', 'nan', 'nan', 'nan'
+            rmses= rmse_val(targets,preds)
+        data = {
+            "data_points": active_args.train_sizes[0],
+            "spearman": spearmans,
+            "cv": cvs,
+            "sharpness": sharp,
+            "sharpness_root": sharp_root,
+            "rmse": rmses,
+            "rmse2": rmses2,
+            "nll": nlls,
+            "ence": ences,
+            "miscalibration_area": miscalibration_areas,
+        }
+
+        # Write data to CSV file
+        with open(os.path.join(os.path.dirname(path), 'val_metrics.csv'), mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=data.keys())
+            
+            # Write header
+            writer.writeheader()
+            
+            # Write values under each column
+            writer.writerow(data)
 
 if __name__ == "__main__":
     active_learning(ActiveArgs().parse_args())

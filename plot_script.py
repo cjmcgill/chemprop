@@ -82,7 +82,8 @@ def read_result(active_args: ActiveArgs):
                     cv.append(float(line['cv']))
                     rmses.append(float(line['rmse']))
                     rmses2.append(float(line['rmse2']))
-                    data_points.append(float(line['data_points']))
+                    if 'data_points' in reader.fieldnames:
+                        data_points.append(float(line['data_points']))
 
         # with open(active_args.results_path, "r") as f:
         #     reader = csv.reader(f)
