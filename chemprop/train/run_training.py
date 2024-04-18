@@ -126,7 +126,7 @@ def run_training(args: TrainArgs,
         )
 
     if args.features_scaling:
-        if args.vle in ["basic", "activity"]: # no scaling for x1 and x2
+        if args.vle in ["basic", "activity"]: # no scaling for x1 and x2. Other vle don't have x1 and x2 in regular features, just in hybrid features.
             unscaled_features_indices = [0,1]
         else:
             unscaled_features_indices = None
@@ -182,12 +182,12 @@ def run_training(args: TrainArgs,
             else:
                 unscaled_target_indices = None
             scaler = train_data.normalize_targets(unscaled_target_indices)
-            if args.vle in ["wohl", "activity"]:
+            if args.vle is not None and args.vle != "basic":
                 hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                     target_scaler=scaler,
-                    matched_hybrid_model_features_indices=[3,4],
+                    matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
                     corresponding_target_indices=[2,2],
-                    scale_only_indices=[2]
+                    scale_only_indices=[2] # scales down magnitude of T without offetting it, no negative T
                 )
                 val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
                 test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
