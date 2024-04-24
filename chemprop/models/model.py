@@ -361,17 +361,17 @@ class MoleculeModel(nn.Module):
                     # The ith degree of Wohl adds i terms to the expansion (but first and last are zero so really i-2)
                     # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
-                    # and each term is d/dN1 [A * z**n1] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
+                    # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
                     a12, a112, a122 = torch.split(output, output.shape[1] // 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
                     gamma_1 = torch.exp(1 / T * (
-                        2*a12*z_1*z_2*q_1
+                        2*a12*z_2**2*q_1
                         + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**2*z_2*q_1 + 3*a112*z_1**2*z_2*q_1
                         +3*a122*z_2**3*q_1 - 6*a122*z_1*z_2**2*q_1 + 3*a122*z_1*z_2**2*q_1
                     ))
                     gamma_2 = torch.exp(1 / T * (
-                        2*a12*z_2*z_1*q_2
+                        2*a12*z_1**2*q_2
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     ))
