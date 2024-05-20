@@ -193,6 +193,7 @@ def run_training(args: TrainArgs,
                 test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
             elif args.vp is not None:
                 hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                    target_scaler=scaler,
                     scale_only_indices=[0],
                 )
                 val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
