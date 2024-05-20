@@ -502,7 +502,7 @@ class TrainArgs(CommonArgs):
     """
     vp: Literal['antoine'] = None
     """"""
-    noisy_temperature: bool = False
+    noisy_temperature: float = None
     """"""
     vle: Literal["basic", "activity", "wohl"] = None
     """Which VLE model to use."""
