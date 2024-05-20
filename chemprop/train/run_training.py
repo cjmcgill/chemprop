@@ -191,10 +191,17 @@ def run_training(args: TrainArgs,
                 )
                 val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
                 test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+            elif args.vp is not None:
+                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                    scale_only_indices=[0],
+                )
+                val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+                test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
             else:
                 hybrid_model_features_scaler = None
             atom_bond_scaler = None
         args.spectra_phase_mask = None
+
     elif args.dataset_type == 'spectra':
         debug('Normalizing spectra and excluding spectra regions based on phase')
         args.spectra_phase_mask = load_phase_mask(args.spectra_phase_mask_path)
@@ -209,6 +216,8 @@ def run_training(args: TrainArgs,
             dataset.set_targets(data_targets)
         scaler = None
         atom_bond_scaler = None
+        hybrid_model_features_scaler = None
+
     else:
         args.spectra_phase_mask = None
         scaler = None

@@ -24,10 +24,11 @@ class MoleculeModel(nn.Module):
         self.classification = args.dataset_type == "classification"
         self.multiclass = args.dataset_type == "multiclass"
         self.loss_function = args.loss_function
-        self.antoine = args.antoine
+        self.vp = args.vp
         self.vle = args.vle
         self.device = args.device
         self.hidden_size = args.hidden_size
+        self.noisy_temperature = args.noisy_temperature
 
         if hasattr(args, "train_class_sizes"):
             self.train_class_sizes = args.train_class_sizes
@@ -64,7 +65,7 @@ class MoleculeModel(nn.Module):
             self.relative_output_size *= (
                 4  # return four evidential parameters: gamma, lambda, alpha, beta
             )
-        if self.antoine:
+        if self.vp == "antoine":
             self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
@@ -385,11 +386,16 @@ class MoleculeModel(nn.Module):
                 log10P = torch.log10(P)
                 output = torch.cat([y_1, y_2, log10P], axis=1)
 
-        # Modify multi-input loss functions
-        if self.antoine:
-            antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
+        # VP
+        if self.vp is not None:
             temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
-            output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+            if self.noisy_temperature and self.training:
+                temp_batch = torch.normal(temp_batch, 0.1) # The 0.1 is the stdev of the noise, but we may want to make it an input parameter
+            if self.vp == "antoine":
+                antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
+                output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+
+        # Multi output loss functions
         if self.loss_function == "mve":
             if self.is_atom_bond_targets:
                 outputs = []

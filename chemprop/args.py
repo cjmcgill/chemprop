@@ -500,7 +500,9 @@ class TrainArgs(CommonArgs):
     Default (False) is to use the checkpoint to freeze all encoders.
     (only relevant for number_of_molecules > 1, where checkpoint model has number_of_molecules = 1)
     """
-    antoine: bool = False
+    vp: Literal['antoine'] = None
+    """"""
+    noisy_temperature: bool = False
     """"""
     vle: Literal["basic", "activity", "wohl"] = None
     """Which VLE model to use."""

@@ -434,7 +434,7 @@ def get_data(path: str,
     # Make hybrid_model_features
     if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
         hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
-    elif args.antoine:
+    elif args.vp is not None:
         hybrid_model_features = features_data[:,[0]] # T only
     else:
         hybrid_model_features = None
