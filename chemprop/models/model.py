@@ -390,7 +390,8 @@ class MoleculeModel(nn.Module):
         if self.vp is not None:
             temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
             if self.noisy_temperature is not None and self.training:
-                temp_batch = torch.normal(temp_batch, self.noisy_temperature) # The 0.1 is the stdev of the noise, but we may want to make it an input parameter
+                noise_batch = torch.normal(0, self.noisy_temperature, temp_batch.shape).to(self.device)
+                temp_batch = temp_batch * (1 + noise_batch)
             if self.vp == "antoine":
                 antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
