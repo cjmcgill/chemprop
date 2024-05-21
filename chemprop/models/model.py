@@ -289,6 +289,12 @@ class MoleculeModel(nn.Module):
         :param bond_types_batch: A list of PyTorch tensors storing bond types of each bond determined by RDKit molecules.
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
+
+        if self.noisy_temperature is not None and self.training:
+            features_batch = np.array(features_batch)
+            noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
+            features_batch[:,0] = features_batch[:,0] + noise_batch
+
         if self.is_atom_bond_targets:
             encodings = self.encoder(
                 batch,
@@ -389,9 +395,6 @@ class MoleculeModel(nn.Module):
         # VP
         if self.vp is not None:
             temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
-            if self.noisy_temperature is not None and self.training:
-                noise_batch = torch.normal(0, self.noisy_temperature, temp_batch.shape).to(self.device)
-                temp_batch = temp_batch * (1 + noise_batch)
             if self.vp == "antoine":
                 antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
