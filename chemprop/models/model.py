@@ -67,6 +67,10 @@ class MoleculeModel(nn.Module):
             )
         if self.vp == "antoine":
             self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
+        elif self.vp == "four_var":
+            self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
+        elif self.vp == "five_var":
+            self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
@@ -395,6 +399,12 @@ class MoleculeModel(nn.Module):
             if self.vp == "antoine":
                 antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+            if self.vp == "four_var":
+                antoine_a, antoine_b, antoine_c, antoine_d = torch.split(output, output.shape[1] // 3, dim=1)
+                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log10(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
+            if self.vp == "five_var":
+                antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.split(output, output.shape[1] // 3, dim=1)
+                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log10(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
 
         # Multi output loss functions
         if self.loss_function == "mve":
