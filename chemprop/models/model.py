@@ -400,14 +400,14 @@ class MoleculeModel(nn.Module):
         if self.vp is not None:
             temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
             if self.vp == "antoine":
-                antoine_a, antoine_b, antoine_c = torch.split(output, output.shape[1] // 3, dim=1)
+                antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
             if self.vp == "four_var":
-                antoine_a, antoine_b, antoine_c, antoine_d = torch.split(output, output.shape[1] // 3, dim=1)
-                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log10(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
+                antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
+                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
             if self.vp == "five_var":
-                antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.split(output, output.shape[1] // 3, dim=1)
-                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log10(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
+                antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
+                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
 
         # Multi output loss functions
         if self.loss_function == "mve":
