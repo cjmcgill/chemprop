@@ -9,6 +9,7 @@ warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 import pandas as pd
 from tensorboardX import SummaryWriter
 import torch
+from tqdm import tqdm
 from tqdm import trange
 from torch.optim.lr_scheduler import ExponentialLR
 
@@ -23,7 +24,7 @@ from chemprop.data import get_class_sizes, get_data, MoleculeDataLoader, Molecul
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count, param_count_all
 from chemprop.utils import build_optimizer, build_lr_scheduler, load_checkpoint, makedirs, \
-    save_checkpoint, save_smiles_splits, load_frzn_model, multitask_mean
+    save_checkpoint, save_smiles_splits, load_frzn_model, multitask_mean, save_antoine_coefficients
 
 
 def run_training(args: TrainArgs,
@@ -380,6 +381,37 @@ def run_training(args: TrainArgs,
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         model = load_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), device=args.device, logger=logger)
+
+        if args.vp is not None:
+            coefficients = []
+            for batch in tqdm(test_data_loader, disable=False, leave=False):
+                # Prepare batch
+                batch: MoleculeDataset
+                mol_batch = batch.batch_graph()
+                features_batch = batch.features()
+                atom_descriptors_batch = batch.atom_descriptors()
+                atom_features_batch = batch.atom_features()
+                bond_descriptors_batch = batch.bond_descriptors()
+                bond_features_batch = batch.bond_features()
+                constraints_batch = batch.constraints()
+                with torch.no_grad():
+                    batch_antoine = model.antoine_coefficient(
+                        mol_batch,
+                        features_batch,
+                        atom_descriptors_batch,
+                        atom_features_batch,
+                        bond_descriptors_batch,
+                        bond_features_batch
+                    )
+                batch_antoine = batch_antoine.data.cpu().numpy()
+                coefficients.append(batch_antoine)
+            coefficients = np.concatenate(coefficients, axis=0)
+            coefficients_path = os.path.join(args.save_dir, 'test_coefficients.csv')
+            save_antoine_coefficients(
+                coefficients=coefficients,
+                save_path=coefficients_path,
+                vp_type=args.vp
+            )
 
         if empty_test_set:
             info(f'Model {model_idx} provided with no test set, no metric evaluation will be performed.')

@@ -73,6 +73,8 @@ class MoleculeModel(nn.Module):
             self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
+        elif self.vp == "simplified":
+            self.relative_output_size *= 2 # uses two antoine parameters internally and returns one result
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
@@ -260,6 +262,43 @@ class MoleculeModel(nn.Module):
         else:
             raise ValueError(f"Unsupported fingerprint type {fingerprint_type}.")
 
+    def antoine_coefficient(
+        self,
+        batch: Union[
+            List[List[str]],
+            List[List[Chem.Mol]],
+            List[List[Tuple[Chem.Mol, Chem.Mol]]],
+            List[BatchMolGraph],
+        ],
+        features_batch: List[np.ndarray] = None,
+        atom_descriptors_batch: List[np.ndarray] = None,
+        atom_features_batch: List[np.ndarray] = None,
+        bond_descriptors_batch: List[np.ndarray] = None,
+        bond_features_batch: List[np.ndarray] = None,
+    ) ->torch.Tensor:
+        encodings = self.encoder(
+            batch,
+            features_batch,
+            atom_descriptors_batch,
+            atom_features_batch,
+            bond_descriptors_batch,
+            bond_features_batch,
+        )
+        output = self.readout(encodings)
+        if self.vp is not None:
+            if self.vp == "antoine":
+                antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
+                return torch.cat((antoine_a, antoine_b, antoine_c), axis=1)
+            if self.vp == "four_var":
+                antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
+                return torch.cat((antoine_a, antoine_b, antoine_c, antoine_d), axis=1)
+            if self.vp == "five_var":
+                antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
+                return torch.cat((antoine_a, antoine_b, antoine_c, antoine_d, antoine_e), axis=1)
+            if self.vp == "simplified":
+                antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
+                return torch.cat((antoine_a, antoine_b), axis=1)
+
     def forward(
         self,
         batch: Union[
@@ -408,6 +447,9 @@ class MoleculeModel(nn.Module):
             if self.vp == "five_var":
                 antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
                 output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
+            if self.vp == "simplified":
+                antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
+                output = antoine_a - (antoine_b / temp_batch)
 
         # Multi output loss functions
         if self.loss_function == "mve":

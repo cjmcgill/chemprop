@@ -899,3 +899,25 @@ def multitask_mean(
                 This metric must be added to the appropriate list in the multitask_mean\
                 function in `chemprop/utils.py` in order to be used."
         )
+
+def save_antoine_coefficients(
+    coefficients: np.ndarray,
+    save_path: str,
+    vp_type: str,
+) -> None:
+    if vp_type == 'antoine':
+        header = ['coef_A', 'coef_B', 'coef_C']
+    elif vp_type == 'four_var':
+        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D']
+    elif vp_type == 'five_var':
+        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D', 'coef_E']
+    elif vp_type == 'simplified':
+        header = ['coef_A', 'coef_B']
+    else:
+        raise NotImplementedError(
+            f"The vp type, {vp_type}, has not been implemented."
+        )
+    with open(save_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(coefficients)
