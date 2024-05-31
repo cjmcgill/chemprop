@@ -442,18 +442,6 @@ def get_data(path: str,
 
     print(np.array(features_data).shape)
 
-    # If VLE model, add extra features for log10(Psat)
-    if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
-        xs = features_data[:, :2]
-        Psat = 10**features_data[:, 3:5]
-        PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
-        log10PRaoult = np.log10(PRaoult)
-        if args.vle in ["basic", "activity"]:
-            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1) # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult, P1sat, P2sat, PRaoult
-        else: # features considered in interaction for wohl and others
-            features_data = features_data[:,2:] # T, log10P1sat, log10P2sat
-
-
     # Make hybrid_model_features
     if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
         hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
