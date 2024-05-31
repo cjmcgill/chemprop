@@ -431,38 +431,6 @@ def get_data(path: str,
     else:
         phase_features = None
     
-    
-    # Make hybrid_model_features
-    if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
-        hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
-    elif args.vp is not None:
-        hybrid_model_features = features_data[:,[0]] # T only
-    else:
-        hybrid_model_features = None
-
-    print(np.array(features_data).shape)
-
-    # Make hybrid_model_features
-    if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
-        hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
-    elif args.vp is not None:
-        hybrid_model_features = features_data[:,[0]] # T only
-    else:
-        hybrid_model_features = None
-
-    print(np.array(features_data).shape)
-
-    # If VLE model, add extra features for log10(Psat)
-    if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
-        xs = features_data[:, :2]
-        Psat = 10**features_data[:, 3:5]
-        PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
-        log10PRaoult = np.log10(PRaoult)
-        if args.vle in ["basic", "activity"]:
-            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1) # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult, P1sat, P2sat, PRaoult
-        else: # features considered in interaction for wohl and others
-            features_data = features_data[:,2:] # T, log10P1sat, log10P2sat
-
     # Load constraints
     if constraints_path is not None:
         constraints_data, raw_constraints_data = get_constraints(
@@ -646,7 +614,7 @@ def get_data(path: str,
                 features_generator=features_generator,
                 features=all_features[i] if features_data is not None else None,
                 phase_features=all_phase_features[i] if phase_features is not None else None,
-                hybrid_model_features=all_hybrid_model_features[i] if hybrid_model_features is not None else None,
+                hybrid_model_features=all_hybrid_model_features[i] if all_hybrid_model_features is not None else None,
                 atom_features=atom_features[i] if atom_features is not None else None,
                 atom_descriptors=atom_descriptors[i] if atom_descriptors is not None else None,
                 bond_features=bond_features[i] if bond_features is not None else None,
