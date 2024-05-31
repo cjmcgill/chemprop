@@ -714,7 +714,7 @@ class MoleculeDataset(Dataset):
         return scaler
     
     def normalize_hybrid_model_features(self, hybrid_model_features_scaler: StandardScaler):
-        if len(self._data) == 0 or (self._data[0].hybrid_model_features is None):
+        if len(self._data) == 0 or (self._data[0].hybrid_model_features is None) or (hybrid_model_features_scaler is None):
             return None
         else:
             for d in self._data:
@@ -758,8 +758,9 @@ class MoleculeDataset(Dataset):
         scaler = StandardScaler().fit(targets)
         if unscaled_target_indices is not None:
             for i in unscaled_target_indices:
-                scaler.means[i] = 0
-                scaler.stds[i] = 1
+                if i < len(scaler.means): # for fugacity balance if no infinite dilution targets
+                    scaler.means[i] = 0
+                    scaler.stds[i] = 1
         scaled_targets = scaler.transform(targets).tolist()
         self.set_targets(scaled_targets)
 
@@ -1012,8 +1013,22 @@ class MoleculeDataLoader(DataLoader):
     def __iter__(self) -> Iterator[MoleculeDataset]:
         r"""Creates an iterator which returns :class:`MoleculeDataset`\ s"""
         return super(MoleculeDataLoader, self).__iter__()
+    
+    @property
+    def hybrid_model_features(self) -> List[np.ndarray]:
+        """
+        Returns the hybrid model features associated with each molecule
+        """
+        if self._class_balance or self._shuffle:
+            raise ValueError('Cannot safely extract targets when class balance or shuffle are enabled.')
+
+        if not hasattr(self._dataset[0],'hybrid_model_features'):
+            return None
+
+        return [self._dataset[index].hybrid_model_features for index in self._sampler]
 
     
+
 def make_mols(smiles: List[str], reaction_list: List[bool], keep_h_list: List[bool], add_h_list: List[bool], keep_atom_map_list: List[bool]):
     """
     Builds a list of RDKit molecules (or a list of tuples of molecules if reaction is True) for a list of smiles.

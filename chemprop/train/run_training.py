@@ -177,29 +177,38 @@ def run_training(args: TrainArgs,
             atom_bond_scaler = train_data.normalize_atom_bond_targets()
             hybrid_model_features_scaler = None
         else:
-            if args.vle is not None: # no scaling for y1 and y2
+            # scale targets
+            if args.fugacity_balance is not None: # no scaling for y1, y2, g1_inf
+                unscaled_target_indices = [0,1,3]
+            elif args.vle is not None:
                 unscaled_target_indices = [0,1]
             else:
                 unscaled_target_indices = None
             scaler = train_data.normalize_targets(unscaled_target_indices)
-            if args.vle is not None and args.vle != "basic":
+            # hybrid model features scaling
+            if args.fugacity_balance is not None: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
+                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                    target_scaler=scaler,
+                    matched_hybrid_model_features_indices=[3,4,7], # scales P1sat and P2sat the same as P target
+                    corresponding_target_indices=[2,2,2],
+                    scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
+                )
+            elif args.vle is not None and args.vle != "basic":
                 hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                     target_scaler=scaler,
                     matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
                     corresponding_target_indices=[2,2],
-                    scale_only_indices=[2] # scales down magnitude of T without offetting it, no negative T
+                    scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
                 )
-                val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
-                test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
             elif args.vp is not None:
                 hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                     target_scaler=scaler,
                     scale_only_indices=[0],
                 )
-                val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
-                test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
             else:
                 hybrid_model_features_scaler = None
+            val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+            test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
             atom_bond_scaler = None
         args.spectra_phase_mask = None
 
@@ -399,6 +408,7 @@ def run_training(args: TrainArgs,
                 is_atom_bond_targets=args.is_atom_bond_targets,
                 gt_targets=test_data.gt_targets(),
                 lt_targets=test_data.lt_targets(),
+                hybrid_model_features=test_data.hybrid_model_features(),
                 logger=logger
             )
 
@@ -414,7 +424,7 @@ def run_training(args: TrainArgs,
                 info(f'Model {model_idx} test {metric} = {avg_test_score:.6f}')
                 writer.add_scalar(f'test_{metric}', avg_test_score, 0)
 
-                if args.show_individual_scores and args.dataset_type != 'spectra':
+                if args.show_individual_scores and (args.dataset_type != 'spectra' or metric != "squared_log_fugacity_difference"):
                     # Individual test scores
                     for task_name, test_score in zip(args.task_names, scores):
                         info(f'Model {model_idx} test {task_name} {metric} = {test_score:.6f}')
@@ -438,6 +448,7 @@ def run_training(args: TrainArgs,
             is_atom_bond_targets=args.is_atom_bond_targets,
             gt_targets=test_data.gt_targets(),
             lt_targets=test_data.lt_targets(),
+            hybrid_model_features=test_data.hybrid_model_features(),
             logger=logger
         )
 

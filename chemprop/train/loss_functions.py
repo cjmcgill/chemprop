@@ -22,6 +22,7 @@ def get_loss_func(args: TrainArgs) -> Callable:
             "bounded_mse": bounded_mse_loss,
             "mve": normal_mve,
             "evidential": evidential_loss,
+            "squared_log_fugacity_difference": squared_log_fugacity_difference,
         },
         "classification": {
             "binary_cross_entropy": nn.BCEWithLogitsLoss(reduction="none"),
@@ -367,3 +368,23 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
     loss = L_NLL + lam * (L_REG - epsilon)
 
     return loss
+
+
+def squared_log_fugacity_difference(
+        pred_values: torch.tensor,
+        hybrid_model_features: torch.tensor,
+) -> torch.tensor:
+    """
+    Uses the square of the log fugacity difference between the vapor and liquid phases as a loss function.
+
+    :param pred_values: Model predictions with shape(batch_size, tasks*4). Contains gamma1, gamma2, log10p1sat, and log10p2sat.
+    :param hybrid_model_features: Features used to predict the fugacity difference with shape(batch_size, features).
+                        Contains x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and optional(g1inf)
+    """
+
+    gamma_1, gamma_2, log10p1sat, log10p2sat = torch.chunk(pred_values, 4, dim=1)
+    x1, x2, T, _, _, y1, y2, log10P, gamma_1_inf = torch.chunk(hybrid_model_features, 9, dim=1) # ignore the log10psat, get from output instead
+    loss_1 = (torch.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
+    loss_2 = (torch.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
+    loss_inf = (torch.log10(gamma_1_inf / gamma_1)) ** 2
+    return torch.cat((loss_1, loss_2, loss_inf), dim=1)

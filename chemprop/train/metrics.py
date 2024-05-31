@@ -90,6 +90,9 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], Lis
 
     if metric == 'precision':
         return precision_metric
+    
+    if metric == 'squared_log_fugacity_difference':
+        return squared_log_fugacity_difference_metric
 
     raise ValueError(f'Metric "{metric}" not supported.')
 
@@ -420,3 +423,24 @@ def wasserstein_metric(model_spectra: List[List[float]], target_spectra: List[Li
     loss = np.mean(loss)
 
     return loss
+
+def squared_log_fugacity_difference_metric(
+        pred_values: List[List[float]],
+        hybrid_model_features: List[List[float]],
+) -> float:
+    gamma_1, gamma_2, log10p1sat, log10p2sat = np.split(pred_values, 4, dim=1)
+    x1, x2, T, _, _, y1, y2, log10P, gamma_1_inf = np.split(hybrid_model_features, 9, dim=1) # ignore the log10psat, get from output instead
+    loss_1 = (np.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
+    loss_2 = (np.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
+    loss_inf = (np.log10(gamma_1_inf / gamma_1)) ** 2
+    loss = np.cat((loss_1, loss_2, loss_inf), dim=1)
+    x1_not_zero = x1 == 0
+    x2_not_zero = x2 == 0
+    g1_inf_not_nan = ~np.isnan(gamma_1_inf)
+    mask = np.stack([
+        x1_not_zero,
+        x2_not_zero & ~g1_inf_not_nan,
+        g1_inf_not_nan,
+    ], dim=1, dtype=bool)
+    loss[~mask] = np.nan
+    return np.nanmean(loss)

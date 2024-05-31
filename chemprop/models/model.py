@@ -26,6 +26,7 @@ class MoleculeModel(nn.Module):
         self.loss_function = args.loss_function
         self.vp = args.vp
         self.vle = args.vle
+        self.fugacity_balance = args.fugacity_balance
         self.device = args.device
         self.hidden_size = args.hidden_size
         self.noisy_temperature = args.noisy_temperature
@@ -65,18 +66,25 @@ class MoleculeModel(nn.Module):
             self.relative_output_size *= (
                 4  # return four evidential parameters: gamma, lambda, alpha, beta
             )
-        if self.vp == "antoine":
-            self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
-        elif self.vp == "four_var":
-            self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
-        elif self.vp == "five_var":
-            self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
-        elif self.vle == "basic":
+
+        if self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
             self.relative_output_size *= 1 # uses thre function parameters internally and returns three results
+        # The vle relative output size applies for the fugacity balance approach too
+        elif self.vp == 'basic':
+            self.relative_output_size *= 1 # predicts vp directly
+        elif self.vp == 'two_var':
+            self.relative_output_size *= 2 # uses two antoine parameters internally and returns one result
+        elif self.vp == "antoine":
+            self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
+        elif self.vp == "four_var":
+            self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
+        elif self.vp == "five_var":
+            self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
+
 
         if self.classification or self.vle is not None:
             self.sigmoid = nn.Sigmoid()
@@ -166,10 +174,22 @@ class MoleculeModel(nn.Module):
             )
             if self.vle == "wohl":
                 self.wohl_q = build_ffn(
-                    first_linear_dim=self.hidden_size + args.features_size,
+                    first_linear_dim=self.hidden_size + 1, # +1 for temperature only
                     hidden_size=args.ffn_hidden_size,
                     num_layers=args.ffn_num_layers,
-                    output_size=1,
+                    output_size=1, # q
+                    dropout=args.dropout,
+                    activation=args.activation,
+                    dataset_type=args.dataset_type,
+                    spectra_activation=args.spectra_activation,
+                )
+            vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
+            if self.fugacity_balance == "intrinsic_vp":
+                self.intrinsic_vp = build_ffn(
+                    first_linear_dim=self.hidden_size + 1, # +1 for temperature only
+                    hidden_size=args.ffn_hidden_size,
+                    num_layers=args.ffn_num_layers,
+                    output_size=vp_output_size_dict[args.vp],
                     dropout=args.dropout,
                     activation=args.activation,
                     dataset_type=args.dataset_type,
@@ -205,6 +225,31 @@ class MoleculeModel(nn.Module):
                         0 : 2 * args.frzn_ffn_layers
                     ]:  # Freeze weights and bias for given number of layers
                         param.requires_grad = False
+
+    def forward_vp(
+            self,
+            output: torch.Tensor,
+            hybrid_model_features_batch: torch.Tensor,
+    ):
+        """
+        Calculates the vapor pressure within the forward function
+        """
+        temp_batch = hybrid_model_features_batch
+        if self.vp == "basic":
+            output = output
+        if self.vp == "two_var":
+            antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
+            output = antoine_a + (antoine_b / temp_batch)
+        if self.vp == "antoine":
+            antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
+            output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+        if self.vp == "four_var":
+            antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
+            output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
+        if self.vp == "five_var":
+            antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
+            output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
+        return output
 
     def fingerprint(
         self,
@@ -294,6 +339,9 @@ class MoleculeModel(nn.Module):
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
 
+        if hybrid_model_features_batch is None:
+            hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
+
         if self.noisy_temperature is not None and self.training:
             features_batch = np.array(features_batch)
             noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
@@ -319,12 +367,21 @@ class MoleculeModel(nn.Module):
                 bond_features_batch,
             )
             output = self.readout(encodings)
-            if self.vle == "wohl":
+
+            # Extra outputs for VLE models
+            if self.vle == "wohl" or self.fugacity_balance == "intrinsic_vp":
                 encoding_1 = encodings[:,:self.hidden_size]
-                encoding_1 = torch.concatenate([encoding_1, encodings[:,2*self.hidden_size:]], axis=1) # include features at the end
-                encoding_2 = encodings[:,self.hidden_size:] # includes features at the end
-                q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
-                q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+                encoding_1 = torch.concatenate([encoding_1, hybrid_model_features_batch[:,[2]]], axis=1) # include T feature at the end
+                encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # includes features at the end
+                encoding_2 = torch.concatenate([encoding_2, hybrid_model_features_batch[:,[2]]], axis=1) # include T feature at the end
+                if self.vle == "wohl":
+                    q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
+                    q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+                if self.fugacity_balance == "intrinsic_vp":
+                    vp1_output = self.intrinsic_vp(encoding_1)
+                    vp2_output = self.intrinsic_vp(encoding_2)
+                    log10p1sat = self.forward_vp(vp1_output, hybrid_model_features_batch)
+                    log10p2sat = self.forward_vp(vp2_output, hybrid_model_features_batch)
 
         # Don't apply sigmoid during training when using BCEWithLogitsLoss
         if (
@@ -351,29 +408,29 @@ class MoleculeModel(nn.Module):
         # Apply post-processing for VLE models
         if self.vle is not None:
             if self.vle == "basic":
-                logity_1, log10P = torch.split(output, output.shape[1] // 2, dim=1)
+                logity_1, log10P = torch.chunk(output, 2, dim=1)
                 y_1 = self.sigmoid(logity_1)
                 y_2 = 1 - y_1
                 output = torch.cat([y_1, y_2, log10P], axis=1)
             else:  # vle in ["activity", "wohl"] # x1 x2 T P1sat P2sat
-                hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
                 # print(hybrid_model_features_batch.shape)
                 # print(hybrid_model_features_batch)
-                x_1 = hybrid_model_features_batch[:,0].unsqueeze(-1)
-                x_2 = hybrid_model_features_batch[:,1].unsqueeze(-1)
-                T = hybrid_model_features_batch[:,2].unsqueeze(-1)
-                log10p1sat = hybrid_model_features_batch[:,3].unsqueeze(-1)
-                log10p2sat = hybrid_model_features_batch[:,4].unsqueeze(-1)
+                x_1 = hybrid_model_features_batch[:,[0]]
+                x_2 = hybrid_model_features_batch[:,[1]]
+                T = hybrid_model_features_batch[:,[2]]
+                if self.fugacity_balance != "intrinsic_vp":
+                    log10p1sat = hybrid_model_features_batch[:,[3]]
+                    log10p2sat = hybrid_model_features_batch[:,[4]]
                 if self.vle == "activity":
-                    gamma_1 = torch.exp(output[:,0].unsqueeze(-1))
-                    gamma_2 = torch.exp(output[:,1].unsqueeze(-1))
+                    gamma_1 = torch.exp(output[:,[0]])
+                    gamma_2 = torch.exp(output[:,[1]])
                 else:  # vle == "wohl"
                     # There's a coefficient before the fitted A that you can get using scipy.special.binom(ith-wohl-degree, jth term) where term 0 and i are defined as zero for excess properties
                     # The ith degree of Wohl adds i terms to the expansion (but first and last are zero so really i-2)
                     # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
                     # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
-                    a12, a112, a122 = torch.split(output, output.shape[1] // 3, dim=1)
+                    a12, a112, a122 = torch.chunk(output, 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
                     gamma_1 = torch.exp(
@@ -386,28 +443,22 @@ class MoleculeModel(nn.Module):
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     )
-                p1sat = 10**log10p1sat
-                p2sat = 10**log10p2sat
-                P1 = p1sat * x_1 * gamma_1
-                P2 = p2sat * x_2 * gamma_2
-                P = P1 + P2
-                y_1 = P1 / P
-                y_2 = P2 / P
-                log10P = torch.log10(P)
-                output = torch.cat([y_1, y_2, log10P], axis=1)
+                if self.fugacity_balance is None:
+                    p1sat = 10**log10p1sat
+                    p2sat = 10**log10p2sat
+                    P1 = p1sat * x_1 * gamma_1
+                    P2 = p2sat * x_2 * gamma_2
+                    P = P1 + P2
+                    y_1 = P1 / P
+                    y_2 = P2 / P
+                    log10P = torch.log10(P)
+                    output = torch.cat([y_1, y_2, log10P], axis=1)
+                else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
+                    output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
 
         # VP
-        if self.vp is not None:
-            temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
-            if self.vp == "antoine":
-                antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
-                output = antoine_a - (antoine_b / (antoine_c + temp_batch))
-            if self.vp == "four_var":
-                antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
-                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
-            if self.vp == "five_var":
-                antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
-                output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
+        if self.vp is not None and self.fugacity_balance is None:
+            output = self.forward_vp(output, hybrid_model_features_batch)
 
         # Multi output loss functions
         if self.loss_function == "mve":

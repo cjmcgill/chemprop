@@ -122,6 +122,17 @@ def train(
                 gt_target_batch = batch.gt_targets()  # shape(batch, tasks)
                 lt_target_batch = torch.tensor(lt_target_batch)
                 gt_target_batch = torch.tensor(gt_target_batch)
+            
+            if args.fugacity_balance is not None:
+                hybrid_model_features_batch = torch.tensor(hybrid_model_features_batch) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
+                x1_not_zero = hybrid_model_features_batch[:,[0]] == 0
+                x2_not_zero = hybrid_model_features_batch[:,[1]] == 0
+                g1_inf_not_nan = ~torch.isnan(hybrid_model_features_batch[:,[-1]])
+                masks = torch.cat([
+                    x1_not_zero,
+                    x2_not_zero & ~g1_inf_not_nan,
+                    g1_inf_not_nan,
+                ], dim=1, dtype=torch.bool)
 
         # Run model
         model.zero_grad()
@@ -154,6 +165,8 @@ def train(
             if args.loss_function == "bounded_mse":
                 lt_target_batch = lt_target_batch.to(torch_device)
                 gt_target_batch = gt_target_batch.to(torch_device)
+            if hybrid_model_features_batch is not None:
+                hybrid_model_features_batch = hybrid_model_features_batch.to(torch_device)
 
         # Calculate losses
         if model.is_atom_bond_targets:
@@ -206,6 +219,9 @@ def train(
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "dirichlet":  # classification
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
+            elif args.loss_function == "squared_log_fugacity_difference":
+                loss = loss_func(preds, hybrid_model_features_batch) * data_weights
+                loss[~masks] = 0 # can't just multiply because there are infinities and NaNs
             else:
                 loss = loss_func(preds, targets) * target_weights * data_weights * masks
 

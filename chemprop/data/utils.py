@@ -431,6 +431,29 @@ def get_data(path: str,
     else:
         phase_features = None
     
+    
+    # Make hybrid_model_features
+    if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
+        hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
+    elif args.vp is not None:
+        hybrid_model_features = features_data[:,[0]] # T only
+    else:
+        hybrid_model_features = None
+
+    print(np.array(features_data).shape)
+
+    # If VLE model, add extra features for log10(Psat)
+    if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
+        xs = features_data[:, :2]
+        Psat = 10**features_data[:, 3:5]
+        PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
+        log10PRaoult = np.log10(PRaoult)
+        if args.vle in ["basic", "activity"]:
+            features_data = np.concatenate([features_data, log10PRaoult, Psat, PRaoult], axis=1) # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult, P1sat, P2sat, PRaoult
+        else: # features considered in interaction for wohl and others
+            features_data = features_data[:,2:] # T, log10P1sat, log10P2sat
+
+
     # Make hybrid_model_features
     if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
         hybrid_model_features = features_data # x1, x2, T, log10Psat1, log10Psat2
@@ -559,9 +582,6 @@ def get_data(path: str,
             if lt_targets is not None:
                 all_lt.append(lt_targets[i])
 
-            if hybrid_model_features is not None:
-                all_hybrid_model_features.append(hybrid_model_features[i])
-
             if store_row:
                 all_rows.append(row)
 
@@ -593,6 +613,37 @@ def get_data(path: str,
                 bond_features = descriptors
             elif args.bond_descriptors == 'descriptor':
                 bond_descriptors = descriptors
+
+        # Make hybrid_model_features for VLE
+        if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
+            all_hybrid_model_features = np.concatenate(
+                [np.array(all_features), np.array(all_targets, dtype=np.float64)], # intrinsic vp prediction still takes in log10Psat but won't use it
+                axis=1,
+            ).tolist() # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
+        elif args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
+            all_hybrid_model_features = all_features # x1, x2, T, log10Psat1, log10Psat2
+        elif args.vp is not None: # T, possibly other features
+            all_hybrid_model_features = np.array(all_features)[:,[0]].tolist() # T only
+        else:
+            all_hybrid_model_features = None
+
+        # Modify features for VLE
+        if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 P g1inf
+            if args.vle == "wohl": # reduction for both intrinsic and tabulated vp
+                all_features = np.array(all_features)[:, [2]].tolist() # T only
+            elif args.vle == "activity":
+                all_features = np.array(all_features)[:, :3].tolist() # x1, x2, T
+            elif args.vle == "basic": # this may not be the best place to call this error
+                raise ValueError("VLE model 'basic' is not supported for fugacity balance.")
+        elif args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
+            if args.vle in ["basic", "activity"]:
+                xs = np.array(all_features)[:, :2]
+                Psat = 10**np.array(all_features)[:, 3:5]
+                PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
+                log10PRaoult = np.log10(PRaoult)
+                all_features = np.concatenate([np.array(all_features), log10PRaoult], axis=1).tolist() # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult
+            else: # features considered in interaction for wohl and others
+                all_features = np.array(all_features)[:, [2]].tolist() # T only
 
         data = MoleculeDataset([
             MoleculeDatapoint(
