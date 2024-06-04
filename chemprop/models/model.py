@@ -449,7 +449,8 @@ class MoleculeModel(nn.Module):
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     )
-                if self.fugacity_balance is None or not self.training:
+                    gamma_1_inf = torch.exp(2*a12*q_1 + 3*a122*q_1)
+                if self.fugacity_balance is None:
                     p1sat = 10**log10p1sat
                     p2sat = 10**log10p2sat
                     P1 = p1sat * x_1 * gamma_1
@@ -460,7 +461,18 @@ class MoleculeModel(nn.Module):
                     log10P = torch.log10(P)
                     output = torch.cat([y_1, y_2, log10P], axis=1)
                 else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
-                    output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
+                    if self.training:
+                        output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
+                    else: # predict mode
+                        p1sat = 10**log10p1sat
+                        p2sat = 10**log10p2sat
+                        P1 = p1sat * x_1 * gamma_1
+                        P2 = p2sat * x_2 * gamma_2
+                        P = P1 + P2
+                        y_1 = P1 / P
+                        y_2 = P2 / P
+                        log10P = torch.log10(P)
+                        output = torch.cat([y_1, y_2, log10P, gamma_1_inf], axis=1)
 
         # VP
         if self.vp is not None and self.fugacity_balance is None:
