@@ -125,7 +125,7 @@ def train(
                 gt_target_batch = torch.tensor(gt_target_batch)
             
             if args.fugacity_balance is not None:
-                hybrid_model_features_batch = torch.tensor(hybrid_model_features_batch) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
+                hybrid_model_features_batch = torch.tensor(np.array(hybrid_model_features_batch)) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
                 x1_not_zero = hybrid_model_features_batch[:,[0]] != 0
                 x2_not_zero = hybrid_model_features_batch[:,[1]] != 0
                 g1_inf_not_nan = ~torch.isnan(hybrid_model_features_batch[:,[-1]])
