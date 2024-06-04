@@ -238,7 +238,7 @@ class MoleculeModel(nn.Module):
         """
         Calculates the vapor pressure within the forward function
         """
-        temp_batch = hybrid_model_features_batch
+        temp_batch = hybrid_model_features_batch[:,[2]]
         if self.vp == "basic":
             output = output
         if self.vp == "two_var":

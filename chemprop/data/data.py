@@ -464,6 +464,15 @@ class MoleculeDataset(Dataset):
             return None
 
         return [d.hybrid_model_features for d in self._data]
+    
+    def raw_hybrid_model_features(self) -> List[np.ndarray]:
+        """
+
+        """
+        if len(self._data) == 0 or self._data[0].raw_hybrid_model_features is None:
+            return None
+
+        return [d.raw_hybrid_model_features for d in self._data]
 
     def atom_features(self) -> List[np.ndarray]:
         """
