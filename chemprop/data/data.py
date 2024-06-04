@@ -740,6 +740,7 @@ class MoleculeDataset(Dataset):
         # feature dims
         hybrid_model_features = np.vstack([d.raw_hybrid_model_features for d in self._data])
         n_features = hybrid_model_features.shape[1]
+        print(hybrid_model_features.shape)
         scaler.means = np.zeros(n_features)
         scaler.stds = np.ones(n_features)
 
