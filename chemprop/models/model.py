@@ -67,13 +67,17 @@ class MoleculeModel(nn.Module):
                 4  # return four evidential parameters: gamma, lambda, alpha, beta
             )
 
-        if self.vle == "basic":
+        if self.fugacity_balance is not None:
+            if self.vle == "activity":
+                self.relative_output_size *= 1/2
+            elif self.vle == "wohl":
+                self.relative_output_size *= 3/4
+        elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
-            self.relative_output_size *= 1 # uses thre function parameters internally and returns three results
-        # The vle relative output size applies for the fugacity balance approach too
+            self.relative_output_size *= 1 # uses three function parameters internally and returns three results
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
         elif self.vp == 'two_var':
@@ -339,7 +343,7 @@ class MoleculeModel(nn.Module):
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
 
-        if hybrid_model_features_batch is None:
+        if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
         if self.noisy_temperature is not None and self.training:
@@ -430,9 +434,11 @@ class MoleculeModel(nn.Module):
                     # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
                     # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
+                    print("output", output)
                     a12, a112, a122 = torch.chunk(output, 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
+                    print("z_1_2", torch.cat((z_1,z_2),dim=1))
                     gamma_1 = torch.exp(
                         2*a12*z_2**2*q_1
                         + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**2*z_2*q_1 + 3*a112*z_1**2*z_2*q_1
@@ -443,7 +449,7 @@ class MoleculeModel(nn.Module):
                         + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
                         +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
                     )
-                if self.fugacity_balance is None:
+                if self.fugacity_balance is None or not self.training:
                     p1sat = 10**log10p1sat
                     p2sat = 10**log10p2sat
                     P1 = p1sat * x_1 * gamma_1

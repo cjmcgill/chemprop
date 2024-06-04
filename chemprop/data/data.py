@@ -718,7 +718,7 @@ class MoleculeDataset(Dataset):
             return None
         else:
             for d in self._data:
-                d.set_hybrid_model_features(hybrid_model_features_scaler.transform(d.raw_hybrid_model_features.reshape(1, -1))[0])
+                d.set_hybrid_model_features(hybrid_model_features_scaler.transform([d.raw_hybrid_model_features])[0])
     
     def custom_normalize_hybrid_features(self, target_scaler: StandardScaler, replace_nan_token: int = 0,
                                            matched_hybrid_model_features_indices=[], corresponding_target_indices=[],
@@ -726,7 +726,7 @@ class MoleculeDataset(Dataset):
         """
         Normalizes the features of the dataset using a :class:`~chemprop.data.StandardScaler`.
         """
-        scaler = StandardScaler(replace_nan_token=replace_nan_token)
+        scaler = StandardScaler(replace_nan_token=np.nan)
 
         # feature dims
         hybrid_model_features = np.vstack([d.raw_hybrid_model_features for d in self._data])
@@ -743,7 +743,7 @@ class MoleculeDataset(Dataset):
             scaler.stds[i] = hybrid_model_features[:, i].mean()
 
         for d in self._data:
-            d.set_hybrid_model_features(scaler.transform(d.hybrid_model_features.reshape(1, -1))[0])
+            d.set_hybrid_model_features(scaler.transform([d.hybrid_model_features])[0])
         
         return scaler
 

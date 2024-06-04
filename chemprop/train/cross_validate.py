@@ -184,6 +184,13 @@ def cross_validate(args: TrainArgs,
                 mean, std = np.mean(task_scores), np.std(task_scores)
                 row += [mean, std] + task_scores.tolist()
             writer.writerow(row)
+        elif args.fugacity_balance is not None:
+            for metric, scores in all_scores.items():
+                row = [metric]
+                task_scores = scores[:,0]
+                mean, std = np.mean(task_scores), np.std(task_scores)
+                row += [mean, std] + task_scores.tolist()
+                writer.writerow(row)
         else: # all other data types, separate scores by task
             for task_num, task_name in enumerate(args.task_names):
                 row = [task_name]

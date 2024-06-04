@@ -45,6 +45,7 @@ def train(
     debug = logger.debug if logger is not None else print
 
     model.train()
+    torch.autograd.set_detect_anomaly(True)
     if model.is_atom_bond_targets:
         loss_sum, iter_count = [0]*(len(args.atom_targets) + len(args.bond_targets)), 0
     else:
@@ -125,14 +126,14 @@ def train(
             
             if args.fugacity_balance is not None:
                 hybrid_model_features_batch = torch.tensor(hybrid_model_features_batch) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
-                x1_not_zero = hybrid_model_features_batch[:,[0]] == 0
-                x2_not_zero = hybrid_model_features_batch[:,[1]] == 0
+                x1_not_zero = hybrid_model_features_batch[:,[0]] != 0
+                x2_not_zero = hybrid_model_features_batch[:,[1]] != 0
                 g1_inf_not_nan = ~torch.isnan(hybrid_model_features_batch[:,[-1]])
                 masks = torch.cat([
                     x1_not_zero,
                     x2_not_zero & ~g1_inf_not_nan,
                     g1_inf_not_nan,
-                ], dim=1, dtype=torch.bool)
+                ], dim=1).bool()
 
         # Run model
         model.zero_grad()
@@ -165,7 +166,7 @@ def train(
             if args.loss_function == "bounded_mse":
                 lt_target_batch = lt_target_batch.to(torch_device)
                 gt_target_batch = gt_target_batch.to(torch_device)
-            if hybrid_model_features_batch is not None:
+            if hybrid_model_features_batch is not None and args.fugacity_balance is not None:
                 hybrid_model_features_batch = hybrid_model_features_batch.to(torch_device)
 
         # Calculate losses
@@ -220,8 +221,16 @@ def train(
             elif args.loss_function == "dirichlet":  # classification
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "squared_log_fugacity_difference":
-                loss = loss_func(preds, hybrid_model_features_batch) * data_weights
-                loss[~masks] = 0 # can't just multiply because there are infinities and NaNs
+                print("preds",preds)
+                print("hybrid_features",hybrid_model_features_batch)
+                print("masks",masks)
+                loss = loss_func(preds, hybrid_model_features_batch, masks) * data_weights
+                # print("loss",loss)
+                # loss = torch.where(masks, loss, torch.zeros_like(loss))
+                # loss[~masks] = 0 # can't just multiply because there are infinities and NaNs
+                print("masked_loss",loss)
+                if loss.isnan().any():
+                    raise ValueError("Loss contains NaNs")
             else:
                 loss = loss_func(preds, targets) * target_weights * data_weights * masks
 
@@ -234,6 +243,9 @@ def train(
             iter_count += 1
 
             loss.backward()
+            for param in model.parameters():
+                print("param",param)
+                print("grad",param.grad)
         if args.grad_clip:
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()
