@@ -45,7 +45,7 @@ def train(
     debug = logger.debug if logger is not None else print
 
     model.train()
-    torch.autograd.set_detect_anomaly(True)
+
     if model.is_atom_bond_targets:
         loss_sum, iter_count = [0]*(len(args.atom_targets) + len(args.bond_targets)), 0
     else:
@@ -221,14 +221,7 @@ def train(
             elif args.loss_function == "dirichlet":  # classification
                 loss = loss_func(preds, targets, args.evidential_regularization) * target_weights * data_weights * masks
             elif args.loss_function == "squared_log_fugacity_difference":
-                print("preds",preds)
-                print("hybrid_features",hybrid_model_features_batch)
-                print("masks",masks)
                 loss = loss_func(preds, hybrid_model_features_batch, masks) * data_weights
-                # print("loss",loss)
-                # loss = torch.where(masks, loss, torch.zeros_like(loss))
-                # loss[~masks] = 0 # can't just multiply because there are infinities and NaNs
-                print("masked_loss",loss)
                 if loss.isnan().any():
                     raise ValueError("Loss contains NaNs")
             else:
@@ -243,9 +236,7 @@ def train(
             iter_count += 1
 
             loss.backward()
-            for param in model.parameters():
-                print("param",param)
-                print("grad",param.grad)
+
         if args.grad_clip:
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()

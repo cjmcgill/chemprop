@@ -434,11 +434,9 @@ class MoleculeModel(nn.Module):
                     # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
                     # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
-                    print("output", output)
                     a12, a112, a122 = torch.chunk(output, 3, dim=1)
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
-                    print("z_1_2", torch.cat((z_1,z_2),dim=1))
                     gamma_1 = torch.exp(
                         2*a12*z_2**2*q_1
                         + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**2*z_2*q_1 + 3*a112*z_1**2*z_2*q_1

@@ -473,7 +473,6 @@ def get_data(path: str,
             raise ValueError(f'Data file did not contain all provided target columns: {target_columns}. Data file field names are: {fieldnames}')
 
         all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt, all_hybrid_model_features = [], [], [], [], [], [], [], [], [], [], [], [], []
-        print(np.array(features_data).shape)
         for i, row in enumerate(tqdm(reader)):
             smiles = [row[c] for c in smiles_columns]
 
@@ -588,8 +587,6 @@ def get_data(path: str,
             all_hybrid_model_features = np.array(all_features)[:,[0]].tolist() # T only
         else:
             all_hybrid_model_features = None
-        print("hybrid_model_features", all_hybrid_model_features.shape)
-        print(args.fugacity_balance, args.vle, args.vp)
 
         # Modify features for VLE
         if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 P g1inf

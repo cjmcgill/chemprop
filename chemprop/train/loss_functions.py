@@ -385,21 +385,14 @@ def squared_log_fugacity_difference(
 
     gamma_1, gamma_2, log10p1sat, log10p2sat = torch.chunk(pred_values, 4, dim=1)
     x1, x2, T, _, _, y1, y2, log10P, gamma_1_inf = torch.chunk(hybrid_model_features, 9, dim=1) # ignore the log10psat, get from output instead
-    # print(gamma_1_inf.shape)
     x1 = torch.where(masks[:,[0]], x1, torch.ones_like(x1)) # mask in
     x2 = torch.where(masks[:,[1]], x2, torch.ones_like(x2)) # mask in
     y1 = torch.where(masks[:,[0]], y1, torch.ones_like(y1)) # mask in
     y2 = torch.where(masks[:,[1]], y2, torch.ones_like(y2)) # mask in
     gamma_1_inf = torch.where(masks[:,[2]], gamma_1_inf, torch.ones_like(gamma_1_inf)) # mask in
-    # print(gamma_1_inf.shape)
     loss_1 = (torch.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
     loss_2 = (torch.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
     loss_inf = (torch.log10(gamma_1_inf / gamma_1)) ** 2
-    # print(loss_1.shape)
-    # print(loss_2.shape)
-    # print(loss_inf.shape)
     loss = torch.cat((loss_1, loss_2, loss_inf), dim=1)
-    # print(masks.shape)
-    # print(loss.shape)
     loss = torch.where(masks, loss, torch.zeros_like(loss)) # mask out
     return loss
