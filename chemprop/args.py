@@ -527,7 +527,7 @@ class TrainArgs(CommonArgs):
     @property
     def minimize_score(self) -> bool:
         """Whether the model should try to minimize the score metric or maximize it."""
-        return self.metric in {'rmse', 'mae', 'mse', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'bounded_mse', 'bounded_mae', 'bounded_rmse'}
+        return self.metric in {'rmse', 'mae', 'mse', 'cross_entropy', 'binary_cross_entropy', 'sid', 'wasserstein', 'bounded_mse', 'bounded_mae', 'bounded_rmse', 'squared_log_fugacity_difference'}
 
     @property
     def use_input_features(self) -> bool:
