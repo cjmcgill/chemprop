@@ -430,10 +430,7 @@ def squared_log_fugacity_difference_metric(
 ) -> float:
     gamma_1, gamma_2, log10p1sat, log10p2sat = np.split(np.array(pred_values), 4, axis=1)
     x1, x2, T, _, _, y1, y2, log10P, gamma_1_inf = np.split(np.array(hybrid_model_features), 9, axis=1) # ignore the log10psat, get from output instead
-    loss_1 = (np.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
-    loss_2 = (np.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
-    loss_inf = (np.log10(gamma_1_inf / gamma_1)) ** 2
-    loss = np.concatenate((loss_1, loss_2, loss_inf), axis=1)
+    # make mask
     x1_not_zero = x1 != 0
     x2_not_zero = x2 != 0
     g1_inf_not_nan = ~np.isnan(gamma_1_inf)
@@ -442,5 +439,16 @@ def squared_log_fugacity_difference_metric(
         x2_not_zero & ~g1_inf_not_nan,
         g1_inf_not_nan,
     ], axis=1, dtype=bool)
+    # apply mask on inputs
+    x1 = np.where(mask[:, [0]], x1, np.ones_like(x1))
+    x2 = np.where(mask[:, [1]], x2, np.ones_like(x2))
+    y1 = np.where(mask[:, [0]], y1, np.ones_like(y1))
+    y2 = np.where(mask[:, [1]], y2, np.ones_like(y2))
+
+    loss_1 = (np.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
+    loss_2 = (np.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
+    loss_inf = (np.log10(gamma_1_inf / gamma_1)) ** 2
+    loss = np.concatenate((loss_1, loss_2, loss_inf), axis=1)
+
     loss[~mask] = np.nan
     return np.nanmean(loss)

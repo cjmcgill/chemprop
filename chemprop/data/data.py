@@ -1026,6 +1026,19 @@ class MoleculeDataLoader(DataLoader):
             return None
 
         return [self._dataset[index].hybrid_model_features for index in self._sampler]
+    
+    @property
+    def raw_hybrid_model_features(self) -> List[np.ndarray]:
+        """
+        Returns the raw hybrid model features associated with each molecule
+        """
+        if self._class_balance or self._shuffle:
+            raise ValueError('Cannot safely extract targets when class balance or shuffle are enabled.')
+
+        if not hasattr(self._dataset[0],'hybrid_model_features'):
+            return None
+
+        return [self._dataset[index].raw_hybrid_model_features for index in self._sampler]
 
     
 

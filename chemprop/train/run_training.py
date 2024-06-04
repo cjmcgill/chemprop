@@ -408,7 +408,7 @@ def run_training(args: TrainArgs,
                 is_atom_bond_targets=args.is_atom_bond_targets,
                 gt_targets=test_data.gt_targets(),
                 lt_targets=test_data.lt_targets(),
-                hybrid_model_features=test_data.hybrid_model_features(),
+                raw_hybrid_model_features=test_data.raw_hybrid_model_features(),
                 logger=logger
             )
 

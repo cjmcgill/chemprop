@@ -18,7 +18,7 @@ def evaluate_predictions(preds: List[List[float]],
                          is_atom_bond_targets: bool = False,
                          gt_targets: List[List[bool]] = None,
                          lt_targets: List[List[bool]] = None,
-                         hybrid_model_features: List[List[float]] = None,
+                         raw_hybrid_model_features: List[List[float]] = None,
                          logger: logging.Logger = None) -> Dict[str, List[float]]:
     """
     Evaluates predictions using a metric function after filtering out invalid targets.
@@ -83,7 +83,7 @@ def evaluate_predictions(preds: List[List[float]],
     elif "squared_log_fugacity_difference" in metrics:
         for metric, metric_func in metric_to_func.items():
             if metric == "squared_log_fugacity_difference":
-                results[metric].append(metric_func(preds, hybrid_model_features))
+                results[metric].append(metric_func(preds, raw_hybrid_model_features))
     else:
         for i in range(num_tasks):
             # # Skip if all targets or preds are identical, otherwise we'll crash during classification
@@ -165,7 +165,7 @@ def evaluate(model: MoleculeModel,
         logger=logger,
         gt_targets=gt_targets,
         lt_targets=lt_targets,
-        hybrid_model_features=data_loader.hybrid_model_features,
+        raw_hybrid_model_features=data_loader.raw_hybrid_model_features,
     )
 
     return results
