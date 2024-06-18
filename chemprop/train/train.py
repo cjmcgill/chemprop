@@ -45,7 +45,7 @@ def train(
     debug = logger.debug if logger is not None else print
 
     model.train()
-    torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(True) # disable this if it blocks other print statements you need
     if model.is_atom_bond_targets:
         loss_sum, iter_count = [0]*(len(args.atom_targets) + len(args.bond_targets)), 0
     else:
@@ -57,6 +57,9 @@ def train(
         mol_batch, features_batch, target_batch, mask_batch, atom_descriptors_batch, atom_features_batch, bond_descriptors_batch, bond_features_batch, constraints_batch, data_weights_batch, hybrid_model_features_batch = \
             batch.batch_graph(), batch.features(), batch.targets(), batch.mask(), batch.atom_descriptors(), \
             batch.atom_features(), batch.bond_descriptors(), batch.bond_features(), batch.constraints(), batch.data_weights(), batch.hybrid_model_features()
+
+        print("smiles", batch.smiles())
+        print("raw_features, [x1,x2,T,log10P1sat,log10P2sat,targets,y1,y2,log10P,g1inf]", batch.raw_hybrid_model_features())
 
         if model.is_atom_bond_targets:
             targets = []
