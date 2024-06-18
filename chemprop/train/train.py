@@ -58,6 +58,7 @@ def train(
             batch.batch_graph(), batch.features(), batch.targets(), batch.mask(), batch.atom_descriptors(), \
             batch.atom_features(), batch.bond_descriptors(), batch.bond_features(), batch.constraints(), batch.data_weights(), batch.hybrid_model_features()
 
+        print("new batch")
         print("smiles", batch.smiles())
         print("raw_features, [x1,x2,T,log10P1sat,log10P2sat,targets,y1,y2,log10P,g1inf]", batch.raw_hybrid_model_features())
 
