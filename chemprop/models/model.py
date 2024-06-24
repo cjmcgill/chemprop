@@ -71,10 +71,15 @@ class MoleculeModel(nn.Module):
             self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
         elif self.vp == "five_var":
             self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
-        elif self.vle == "basic":
-            self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vp == "simplified":
             self.relative_output_size *= 2 # uses two antoine parameters internally and returns one result
+        elif self.vp == "ambrose4":
+            self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
+        elif self.vp == "ambrose5":
+            self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
+
+        elif self.vle == "basic":
+            self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
@@ -289,10 +294,10 @@ class MoleculeModel(nn.Module):
             if self.vp == "antoine":
                 antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
                 return torch.cat((antoine_a, antoine_b, antoine_c), axis=1)
-            if self.vp == "four_var":
+            if self.vp in ["four_var", "ambrose4"]:
                 antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
                 return torch.cat((antoine_a, antoine_b, antoine_c, antoine_d), axis=1)
-            if self.vp == "five_var":
+            if self.vp in ["five_var", "ambrose5"]:
                 antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
                 return torch.cat((antoine_a, antoine_b, antoine_c, antoine_d, antoine_e), axis=1)
             if self.vp == "simplified":
@@ -437,7 +442,8 @@ class MoleculeModel(nn.Module):
 
         # VP
         if self.vp is not None:
-            temp_batch = torch.from_numpy(np.stack(hybrid_model_features_batch)).float().to(self.device)
+            hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
+            temp_batch = hybrid_model_features_batch[:,[0]]
             if self.vp == "antoine":
                 antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
                 output = antoine_a - (antoine_b / (antoine_c + temp_batch))
@@ -450,6 +456,17 @@ class MoleculeModel(nn.Module):
             if self.vp == "simplified":
                 antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
                 output = antoine_a - (antoine_b / temp_batch)
+            if self.vp in ["ambrose4","ambrose5"]:
+                Tc = hybrid_model_features_batch[:,[1]]
+                tau = 1 - temp_batch / Tc
+                log10Pc = hybrid_model_features_batch[:,[2]]
+                if self.vp == "ambrose4":
+                    ambrose_a, ambrose_b, ambrose_c, ambrose_d = torch.chunk(output, 4, dim=1)
+                    log10Pr = (ambrose_a * tau + ambrose_b * tau**1.5 + ambrose_c * tau**2.5 + ambrose_d * tau**5) / (1 - tau)
+                if self.vp == "ambrose5":
+                    ambrose_a, ambrose_b, ambrose_c, ambrose_d, ambrose_e = torch.chunk(output, 5, dim=1)
+                    log10Pr = (ambrose_a * tau + ambrose_b * tau**1.5 + ambrose_c * tau**2.5 + ambrose_d * tau**5 + ambrose_e * tau**6) / (1 - tau)
+                output = log10Pc + log10Pr
 
         # Multi output loss functions
         if self.loss_function == "mve":

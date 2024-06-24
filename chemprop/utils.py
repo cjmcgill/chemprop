@@ -709,9 +709,7 @@ def save_smiles_splits(
             if dataset.hybrid_model_features() is not None: # vle-activity, vle-wohl, or antoine
                 hybrid_model_features = np.array(dataset.hybrid_model_features())
                 dataset_features = np.array(dataset.features())
-                if hybrid_model_features.shape[1] == 1: # antoine
-                    pass
-                else: # vle-activity or vle-wohl
+                if hybrid_model_features.shape[1] != dataset_features.shape[1]: # extra or removed features
                     dataset_features = hybrid_model_features
             else:
                 dataset_features = dataset.features()
@@ -913,6 +911,10 @@ def save_antoine_coefficients(
         header = ['coef_A', 'coef_B', 'coef_C', 'coef_D', 'coef_E']
     elif vp_type == 'simplified':
         header = ['coef_A', 'coef_B']
+    elif vp_type == 'ambrose':
+        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D']
+    elif vp_type == 'ambrose5':
+        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D', 'coef_E']
     else:
         raise NotImplementedError(
             f"The vp type, {vp_type}, has not been implemented."

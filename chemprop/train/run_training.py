@@ -186,9 +186,19 @@ def run_training(args: TrainArgs,
             if args.vle is not None and args.vle != "basic":
                 hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                     target_scaler=scaler,
-                    matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
+                    target_matched_indices=[3,4], # scales P1sat and P2sat the same as P target
                     corresponding_target_indices=[2,2],
                     scale_only_indices=[2] # scales down magnitude of T without offetting it, no negative T
+                )
+                val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+                test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+            elif args.vp in ["ambrose4", "ambrose5"]:
+                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                    target_scaler=scaler,
+                    scale_only_indices=[0],
+                    target_matched_indices=[2],
+                    corresponding_target_indices=[0],
+                    matched_scaling_pairs=[(0,1)] # match T and Tc scaling
                 )
                 val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
                 test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
