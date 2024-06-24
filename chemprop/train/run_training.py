@@ -382,7 +382,7 @@ def run_training(args: TrainArgs,
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         model = load_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), device=args.device, logger=logger)
 
-        if args.vp is not None:
+        if args.save_vp_coefficients:
             coefficients = []
             for batch in tqdm(test_data_loader, disable=False, leave=False):
                 # Prepare batch

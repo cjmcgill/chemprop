@@ -314,6 +314,8 @@ class TrainArgs(CommonArgs):
     """Path to model checkpoint file to be loaded for overwriting and freezing weights."""
     save_smiles_splits: bool = False
     """Save smiles for each train/val/test splits for prediction convenience later."""
+    save_vp_coefficients: bool = False
+    """Save coefficients for vapor pressure prediction."""
     test: bool = False
     """Whether to skip training and only test the model."""
     quiet: bool = False
