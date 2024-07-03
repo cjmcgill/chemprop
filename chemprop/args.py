@@ -450,6 +450,9 @@ class TrainArgs(CommonArgs):
     """
 
     # Training arguments
+
+    wohl_order: int = 3  # default to 3rd-order Wohl
+    
     epochs: int = 30
     """Number of epochs to run."""
     warmup_epochs: float = 2.0
@@ -642,6 +645,10 @@ class TrainArgs(CommonArgs):
             self.mpn_shared = True
             self.number_of_molecules = 2
 
+        # Validate wohl_order
+        if self.vle == "wohl" and self.wohl_order not in [3, 6]:
+                    raise ValueError("Invalid wohl_order. It must be either 3 or 6.")
+                    
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:
             raise ValueError('In reaction_solvent mode, --number_of_molecules 2 must be specified.')

@@ -20,7 +20,7 @@ class MoleculeModel(nn.Module):
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
         super(MoleculeModel, self).__init__()
-
+        self.args = args
         self.classification = args.dataset_type == "classification"
         self.multiclass = args.dataset_type == "multiclass"
         self.loss_function = args.loss_function
@@ -71,13 +71,20 @@ class MoleculeModel(nn.Module):
             if self.vle == "activity":
                 self.relative_output_size *= 1/2
             elif self.vle == "wohl":
-                self.relative_output_size *= 3/4
+                if args.wohl_order == 3:
+                    self.relative_output_size *= 3/4 #3 parameter for 3rd-order Wohl model
+                elif args.wohl_order == 6:
+                    self.relative_output_size *= 6/4 #6 parameter for 6th-order Wohl model
+                
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
-            self.relative_output_size *= 1 # uses three function parameters internally and returns three results
+            if args.wohl_order == 3:
+                self.relative_output_size *= 1 #uses three function parameters internally and returns three results
+            elif args.wohl_order == 6:
+                self.relative_output_size *= 2 #for 6th order Wohl
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
         elif self.vp == 'two_var':
@@ -310,7 +317,7 @@ class MoleculeModel(nn.Module):
             raise ValueError(f"Unsupported fingerprint type {fingerprint_type}.")
 
     def forward(
-        self,
+        self, 
         batch: Union[
             List[List[str]],
             List[List[Chem.Mol]],
@@ -324,7 +331,7 @@ class MoleculeModel(nn.Module):
         bond_features_batch: List[np.ndarray] = None,
         constraints_batch: List[torch.Tensor] = None,
         bond_types_batch: List[torch.Tensor] = None,
-        hybrid_model_features_batch: List[np.ndarray] = None,
+        hybrid_model_features_batch: List[np.ndarray] = None, 
     ) -> torch.Tensor:
         """
         Runs the :class:`MoleculeModel` on input.
@@ -342,7 +349,7 @@ class MoleculeModel(nn.Module):
         :param bond_types_batch: A list of PyTorch tensors storing bond types of each bond determined by RDKit molecules.
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
-
+        args = self.args
         if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
@@ -428,25 +435,60 @@ class MoleculeModel(nn.Module):
                 if self.vle == "activity":
                     gamma_1 = torch.exp(output[:,[0]])
                     gamma_2 = torch.exp(output[:,[1]])
-                else:  # vle == "wohl"
+
                     # There's a coefficient before the fitted A that you can get using scipy.special.binom(ith-wohl-degree, jth term) where term 0 and i are defined as zero for excess properties
                     # The ith degree of Wohl adds i terms to the expansion (but first and last are zero so really i-2)
                     # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
                     # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
-                    a12, a112, a122 = torch.chunk(output, 3, dim=1)
+                else: #vle == "wohl"
+                    if args.wohl_order ==3:
+                        a12, a112, a122 = torch.chunk(output, 3, dim=1)
+                    elif args.wohl_order == 6:
+                        a12, a112, a122, a1112, a1222, a1122 = torch.chunk(output, 6, dim=1)
+                    
+                    #volume fractions Zi
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
-                    gamma_1 = torch.exp(
-                        2*a12*z_2**2*q_1
-                        + 6*a112*z_1*z_2**2*q_1 - 3*a112*z_1**2*z_2*q_1 + 3*a112*z_1**2*z_2*q_1
-                        +3*a122*z_2**3*q_1 - 6*a122*z_1*z_2**2*q_1 + 3*a122*z_1*z_2**2*q_1
-                    )
-                    gamma_2 = torch.exp(
-                        2*a12*z_1**2*q_2
-                        + 6*a122*z_2*z_1**2*q_2 - 3*a122*z_2**2*z_1*q_2 + 3*a122*z_2**2*z_1*q_2
-                        +3*a112*z_1**3*q_2 - 6*a112*z_2*z_1**2*q_2 + 3*a112*z_2*z_1**2*q_2
-                    )
+                    if args.wohl_order ==3:
+                        gamma_1 = torch.exp(
+                            2 * a12 * z_2**2 * q_1 +
+                            6 * a112 * z_1 * z_2**2 * q_1 -
+                            3 * a122 * z_1 * z_2**2 * q_1 +
+                            3 * a122 * z_2**3 * q_1
+                        )
+                        gamma_2 = torch.exp(
+                            2 * a12 * z_1**2 * q_2 +
+                            3 * a112 * z_1**3 * q_2 -
+                            3 * a112 * z_1**2 * z_2 * q_2 +
+                            6 * a122 * z_1**2 * z_2 * q_2
+                        )
+                    elif args.wohl_order ==6:
+                        gamma_1 = torch.exp(
+                            2 * a12 * z_2**2 * q_1 +
+                            6 * a112 * z_1 * z_2**2 * q_1 -
+                            3 * a122 * z_1 * z_2**2 * q_1 +
+                            3 * a122 * z_2**3 * q_1 +
+                            12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
+                            4 * a1222 * q_1 * z_2**4 -
+                            8 * a1222 * z_1 * q_1 * z_2**3 +
+                            12 * a1122 * z_1 * q_1 * z_2**3 -
+                            6 * a1122 * z_1**2 * q_1 * z_2**2
+                        )
+                        gamma_2 = torch.exp(
+                            2 * a12 * z_1**2 * q_2 +
+                            3 * a112 * z_1**3 * q_2 -
+                            3 * a112 * z_1**2 * z_2 * q_2 +
+                            6 * a122 * z_1**2 * z_2 * q_2 +
+                            4 * a1112 * z_1**4 * q_2 -
+                            8 * a1112 * z_1**3 * z_2 * q_2 +
+                            12 * a1122 * z_1**2 * z_2**2 * q_2 +
+                            12 * a1222 * z_1**3 * z_2 * q_2 -
+                            6 * a1222 * z_1**2 * z_2**2 * q_2
+                        )
+
+                    
+                    
                     gamma_1_inf = torch.exp(2*a12*q_1 + 3*a122*q_1)
                 if self.fugacity_balance is None:
                     p1sat = 10**log10p1sat
