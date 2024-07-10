@@ -52,6 +52,7 @@ class Featurization_parameters:
 PARAMS = Featurization_parameters()
 
 
+
 def reset_featurization_parameters(logger: logging.Logger = None) -> None:
     """
     Function resets feature parameter values to defaults by replacing the parameters instance.
@@ -63,6 +64,7 @@ def reset_featurization_parameters(logger: logging.Logger = None) -> None:
     debug('Setting molecule featurization parameters to default.')
     global PARAMS
     PARAMS = Featurization_parameters()
+   
 
 
 def get_atom_fdim(overwrite_default_atom: bool = False, is_reaction: bool = False) -> int:
@@ -111,6 +113,7 @@ def set_reaction(reaction: bool, mode: str) -> None:
     :param mode: Reaction mode to construct atom and bond feature vectors.
 
     """
+    
     PARAMS.REACTION = reaction
     if reaction:
         PARAMS.EXTRA_ATOM_FDIM = PARAMS.ATOM_FDIM - PARAMS.MAX_ATOMIC_NUM - 1
@@ -338,7 +341,6 @@ class MolGraph:
         self.is_explicit_h = is_explicit_h(self.is_mol)
         self.is_adding_hs = is_adding_hs(self.is_mol)
         self.reaction_mode = reaction_mode()
-        
         # Convert SMILES to RDKit molecule if necessary
         if type(mol) == str:
             if self.is_reaction:

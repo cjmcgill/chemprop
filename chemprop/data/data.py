@@ -115,7 +115,6 @@ class MoleculeDatapoint:
         self.is_explicit_h_list = [is_explicit_h(x) for x in self.is_mol_list]
         self.is_adding_hs_list = [is_adding_hs(x) for x in self.is_mol_list]
         self.is_keeping_atom_map_list = [is_keeping_atom_map(x) for x in self.is_mol_list]
-
         if data_weight is not None:
             self.data_weight = data_weight
         if gt_targets is not None:

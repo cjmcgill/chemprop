@@ -134,6 +134,8 @@ class ActiveArgs(Tap):  # commands that is needed to run active learning
     model_fp_path: str = None
     num_cv_seed: int = 10
     quantile_alpha: float = 0.1
+    reaction_dataset: bool = False
+    num_molecules: int = 1
 
 #@profile
 def active_learning(active_args: ActiveArgs):
@@ -147,6 +149,7 @@ def active_learning(active_args: ActiveArgs):
         evidential_regularization=active_args.evidential_regularization,
         save_dir= None
     )
+    
     if not active_args.no_comparison_model:
         train_args2 = get_initial_train_args(
             active_args=active_args,
@@ -181,6 +184,7 @@ def active_learning(active_args: ActiveArgs):
         )
         cross_validate(args=init_train_args, train_func=run_training)
         makedirs(os.path.join(active_args.active_save_dir, "init"))
+        
     trainval_data, remaining_data = initial_trainval_split(
         active_args=active_args,
         nontest_data=nontest_data,
@@ -189,7 +193,6 @@ def active_learning(active_args: ActiveArgs):
         save_indices=True,
     )
     
-    # assert False
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
     spearman_cal, cv_cal, sharpness_cal = [], [], []
@@ -256,6 +259,8 @@ def active_learning(active_args: ActiveArgs):
             filename_base="training_set",
             active_args=active_args,
         )
+
+
         update_train_args(active_args=active_args, train_args=train_args)
         if not active_args.no_comparison_model:
             update_train_args2(active_args=active_args, train_args=train_args2)
@@ -358,6 +363,7 @@ def active_learning(active_args: ActiveArgs):
             sharpness_root_cal,
         )
         
+    delete_pt_files(active_args.active_save_dir)
         # cleanup_active_files(
         #     active_args=active_args,
         #     train_args=train_args,
@@ -408,6 +414,13 @@ def get_initial_train_args(
         "--dataset_type",
         dataset_type,
     ]
+    if active_args.reaction_dataset:
+        commandline_inputs.extend(["--reaction"])
+    if active_args.num_molecules > 1:
+        commandline_inputs.extend(["--number_of_molecules", str(active_args.num_molecules)])
+    else:
+        print("Number of molecules is invalid")
+
     if save_dir is not None:
         commandline_inputs.extend(["--save_dir", os.path.join(save_dir, "init")])
         commandline_inputs.extend(["--split_sizes", "1", "0" ,"0"])
@@ -435,6 +448,7 @@ def get_initial_train_args(
     if evidential_regularization is not None:
         commandline_inputs.extend(["--evidential_regularization", str(evidential_regularization)])
     initial_train_args = TrainArgs().parse_args(commandline_inputs)
+    
 
 
 
@@ -445,6 +459,7 @@ def get_initial_train_args(
         ignore_columns=initial_train_args.ignore_columns,
     )
     assert initial_train_args.num_tasks == 1
+    
 
     return initial_train_args
 
@@ -452,6 +467,9 @@ def get_initial_train_args(
 def get_test_split(
     active_args: ActiveArgs,save_test_nontest: bool = True, save_indices: bool = True
 ) -> Tuple[MoleculeDataset]:
+    # print(active_args.data_path)
+    # print(active_args.smiles_columns)
+    # print(active_args.task_names)
     data = get_data(
         path=active_args.data_path,
         features_path=active_args.features_path,
@@ -459,6 +477,7 @@ def get_test_split(
         target_columns=active_args.task_names,
         features_generator=active_args.features_generator,
     )
+    # assert False, "This function should not be called"  
 
     if active_args.active_test_path is not None:
         assert (active_args.active_test_features_path is None) == (
@@ -1000,6 +1019,8 @@ def test_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_f
                 "rmse",
             ]
         )
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1072,6 +1093,8 @@ def run_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
                 "rmse",
             ]
         )
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
 
     if active_args.features_path is not None:
         argument_input.extend(
@@ -1145,6 +1168,8 @@ def cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
                 "rmse",
             ]
         )
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1217,6 +1242,8 @@ def val_cal_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,searc
                 "rmse",
             ]
         )
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1287,6 +1314,9 @@ def val_predictions(active_args: ActiveArgs, train_args: TrainArgs,gpu,search_fu
                 "rmse",
             ]
         )
+    
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if active_args.features_path is not None:
         argument_input.extend(
             [
@@ -1348,6 +1378,8 @@ def run_predictions2(active_args: ActiveArgs, train_args: TrainArgs,gpu) -> None
                 os.path.join(active_args.active_save_dir, "whole_features2.csv"),
             ]
         )
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if gpu is not None:
         argument_input.extend(["--gpu", str(gpu)])
     # if isinstance(train_args.gpu, int):
@@ -1549,19 +1581,6 @@ def update_trainval_split(
     elif data_selection == "kmeans":
         smiles=get_fingerprint(previous_remaining_data=previous_remaining_data,active_args=active_args,gpu=active_args.gpu,i=iteration)
         smiles_=MoleculeDataset.smiles(previous_remaining_data) 
-        # print("--------------------------------------------------------")
-        # for d in previous_remaining_data:
-        #     print(f"Keys in d.output: {d.output.keys()}")
-
-        # print("--------------------------------------------------------")
-        # priority_values = [
-        #         d.output[
-        #             active_args.task_names[0]
-        #             + f"_{active_args.train_sizes[iteration-1]}"
-        #         ]
-        #         for d in previous_remaining_data
-        #     ]
-        # assert False
         new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))]
         new_data=MoleculeDataset([previous_remaining_data[i] for i in new_indices])
         new_data_indices = new_indices
@@ -2070,9 +2089,11 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     if len(adding_cluster_indices) < active_args.initial_trainval_size:
         count= active_args.initial_trainval_size-len(adding_cluster_indices)
         missing_from = [x for x in list(range(len(standardized_data))) if x not in adding_cluster_indices]
-        missing=random.sample(missing_from,count)
-        adding_cluster_indices = np.concatenate((adding_cluster_indices, missing))
-
+        center=np.mean(standardized_data[adding_cluster_indices],axis=0)
+        distances = np.linalg.norm(standardized_data[missing_from] - center, axis=1)
+        sorted_indices = np.argsort(distances)
+        
+        adding_cluster_indices = np.concatenate((adding_cluster_indices, sorted_indices[0:count]))
     assert len(adding_cluster_indices) >= active_args.initial_trainval_size, f"Adding cluster indices: {len(adding_cluster_indices)}, Initial trainval size: {active_args.initial_trainval_size}"
     adding_cluster_data = standardized_data[adding_cluster_indices]
     distances_to_centroid = pairwise_distances_argmin_min(adding_cluster_data, cluster_centers[active_args.train_seed].reshape(1, -1))[1]
@@ -2081,6 +2102,17 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
     smiles=[]
     smiles=[nontest_smiles[i] for i in adding_incides]
     return smiles
+
+def delete_pt_files(path):
+    # Walk through all directories and subdirectories
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            # Check if the file has the .pt extension
+            if file.endswith(".pt"):
+                # Construct the full path to the file
+                file_path = os.path.join(root, file)
+                # Delete the file
+                os.remove(file_path)
 
 
 
