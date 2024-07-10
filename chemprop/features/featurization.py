@@ -44,13 +44,12 @@ class Featurization_parameters:
         self.EXTRA_BOND_FDIM = 0
         self.REACTION_MODE = None
         self.EXPLICIT_H = False
-        self.REACTION = False
+        self.REACTION = True
         self.ADDING_H = False
         self.KEEP_ATOM_MAP = False
 
 # Create a global parameter object for reference throughout this module
 PARAMS = Featurization_parameters()
-
 
 
 def reset_featurization_parameters(logger: logging.Logger = None) -> None:
