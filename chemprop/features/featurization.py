@@ -39,9 +39,9 @@ class Featurization_parameters:
 
         # len(choices) + 1 to include room for uncommon values; + 2 at end for IsAromatic and mass
         self.ATOM_FDIM = sum(len(choices) + 1 for choices in self.ATOM_FEATURES.values()) + 2
-        self.EXTRA_ATOM_FDIM = 0
+        self.EXTRA_ATOM_FDIM = self.ATOM_FDIM - self.MAX_ATOMIC_NUM - 1
         self.BOND_FDIM = 14
-        self.EXTRA_BOND_FDIM = 0
+        self.EXTRA_BOND_FDIM = self.BOND_FDIM
         self.REACTION_MODE = None
         self.EXPLICIT_H = False
         self.REACTION = True

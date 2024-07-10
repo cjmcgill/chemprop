@@ -268,7 +268,7 @@ def active_learning(active_args: ActiveArgs):
         if not active_args.no_comparison_model:
             cross_validate(args=train_args2, train_func=run_training)
         run_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
-        assert False
+        # assert False
         test_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)
         if active_args.search_function != "random" and active_args.search_function != "quantile":
             cal_predictions(active_args=active_args, train_args=train_args,gpu=active_args.gpu,search_function=active_args.search_function,iteration=i)

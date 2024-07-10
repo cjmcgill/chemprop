@@ -49,7 +49,6 @@ class MPNEncoder(nn.Module):
         # Input
         input_dim = self.atom_fdim if self.atom_messages else self.bond_fdim
         self.W_i = nn.Linear(input_dim, self.hidden_size, bias=self.bias)
-
         if self.atom_messages:
             w_h_input_size = self.hidden_size + self.bond_fdim
         else:
@@ -91,10 +90,6 @@ class MPNEncoder(nn.Module):
 
         f_atoms, f_bonds, a2b, b2a, b2revb, a_scope, b_scope = mol_graph.get_components(atom_messages=self.atom_messages)
         f_atoms, f_bonds, a2b, b2a, b2revb = f_atoms.to(self.device), f_bonds.to(self.device), a2b.to(self.device), b2a.to(self.device), b2revb.to(self.device)
-        print('------------------')
-        print('UP')
-        print(f_bonds.shape)
-        print('------------------')
         if self.is_atom_bond_targets:
             b2br = mol_graph.get_b2br().to(self.device)
             if bond_descriptors_batch is not None:
@@ -110,10 +105,6 @@ class MPNEncoder(nn.Module):
 
         if self.atom_messages:
             a2a = mol_graph.get_a2a().to(self.device)
-        print('------------------')
-        print('DOWN')
-        print(f_bonds.shape)
-        print('------------------')
         # Input
         if self.atom_messages:
             input = self.W_i(f_atoms)  # num_atoms x hidden_size

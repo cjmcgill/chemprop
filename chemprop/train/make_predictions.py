@@ -104,6 +104,7 @@ def set_features(args: PredictArgs, train_args: TrainArgs):
     :param train_args: A :class:`~chemprop.args.TrainArgs` object containing arguments for training the model.
     """
     reset_featurization_parameters()
+    
 
     if args.atom_descriptors == "feature":
         set_extra_atom_fdim(train_args.atom_features_size)
