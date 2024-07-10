@@ -481,7 +481,7 @@ def get_data(path: str,
         all_smiles, all_targets, all_atom_targets, all_bond_targets, all_rows, all_features, all_phase_features, all_constraints_data, all_raw_constraints_data, all_weights, all_gt, all_lt = [], [], [], [], [], [], [], [], [], [], [], []
         for i, row in enumerate(tqdm(reader)):
             smiles = [row[c] for c in smiles_columns]
-
+            
             targets, atom_targets, bond_targets = [], [], []
             for column in target_columns:
                 value = row[column]
@@ -512,7 +512,7 @@ def get_data(path: str,
                         raise ValueError(f'Unrecognized targets of column {column} in {path}.')
                 else:
                     targets.append(float(value))
-
+            
             # Check whether all targets are None and skip if so
             if skip_none_targets and all(x is None for x in targets):
                 continue

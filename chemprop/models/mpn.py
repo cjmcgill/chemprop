@@ -37,7 +37,6 @@ class MPNEncoder(nn.Module):
         self.aggregation = args.aggregation
         self.aggregation_norm = args.aggregation_norm
         self.is_atom_bond_targets = args.is_atom_bond_targets
-
         # Dropout
         self.dropout = nn.Dropout(args.dropout)
 
