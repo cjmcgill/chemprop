@@ -502,7 +502,7 @@ class TrainArgs(CommonArgs):
     Default (False) is to use the checkpoint to freeze all encoders.
     (only relevant for number_of_molecules > 1, where checkpoint model has number_of_molecules = 1)
     """
-    vp: Literal['antoine', 'four_var', 'five_var', 'ambrose4','ambrose5', 'simplified'] = None
+    vp: Literal['antoine', 'four_var', 'five_var', 'ambrose4','ambrose5', 'riedel4', 'riedel5', 'simplified'] = None
     """"""
     noisy_temperature: float = None
     """"""

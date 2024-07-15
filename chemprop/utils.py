@@ -905,16 +905,12 @@ def save_antoine_coefficients(
 ) -> None:
     if vp_type == 'antoine':
         header = ['coef_A', 'coef_B', 'coef_C']
-    elif vp_type == 'four_var':
+    elif vp_type in ['four_var', 'ambrose4', 'riedel4']:
         header = ['coef_A', 'coef_B', 'coef_C', 'coef_D']
-    elif vp_type == 'five_var':
+    elif vp_type in ['five_var', 'ambrose5', 'riedel5']:
         header = ['coef_A', 'coef_B', 'coef_C', 'coef_D', 'coef_E']
     elif vp_type == 'simplified':
         header = ['coef_A', 'coef_B']
-    elif vp_type == 'ambrose':
-        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D']
-    elif vp_type == 'ambrose5':
-        header = ['coef_A', 'coef_B', 'coef_C', 'coef_D', 'coef_E']
     else:
         raise NotImplementedError(
             f"The vp type, {vp_type}, has not been implemented."
