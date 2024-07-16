@@ -646,8 +646,8 @@ class TrainArgs(CommonArgs):
             self.number_of_molecules = 2
 
         # Validate wohl_order
-        if self.vle == "wohl" and self.wohl_order not in [3, 6]:
-                    raise ValueError("Invalid wohl_order. It must be either 3 or 6.")
+        if self.vle == "wohl" and self.wohl_order not in [3, 6, 9]:
+                    raise ValueError("Invalid wohl_order. It must be either 3, 6, or 9.")
                     
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:

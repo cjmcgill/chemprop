@@ -75,6 +75,8 @@ class MoleculeModel(nn.Module):
                     self.relative_output_size *= 3/4 #3 parameter for 3rd-order Wohl model
                 elif args.wohl_order == 6:
                     self.relative_output_size *= 6/4 #6 parameter for 6th-order Wohl model
+                elif args.wohl_order == 9:
+                    self.relative_output_size *= 10/4 #10 parameter for 9th-order wohl model
                 
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
@@ -85,6 +87,8 @@ class MoleculeModel(nn.Module):
                 self.relative_output_size *= 1 #uses three function parameters internally and returns three results
             elif args.wohl_order == 6:
                 self.relative_output_size *= 2 #for 6th order Wohl
+            elif args.wohl_order == 9:
+                self.relative_output_size *= 10/3 #for 9th order wohl
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
         elif self.vp == 'two_var':
@@ -446,6 +450,8 @@ class MoleculeModel(nn.Module):
                         a12, a112, a122 = torch.chunk(output, 3, dim=1)
                     elif args.wohl_order == 6:
                         a12, a112, a122, a1112, a1222, a1122 = torch.chunk(output, 6, dim=1)
+                    elif args.wohl_order == 9:
+                        a12, a112, a122, a1112, a1222, a1122, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
                     
                     #volume fractions Zi
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
@@ -487,7 +493,43 @@ class MoleculeModel(nn.Module):
                             6 * a1222 * z_1**2 * z_2**2 * q_2
                         )
 
-                    
+                    elif args.wohl_order == 9:
+                        gamma_1 = torch.exp(
+                            2 * a12 * z_2**2 * q_1 +
+                            6 * a112 * z_1 * z_2**2 * q_1 -
+                            3 * a122 * z_1 * z_2**2 * q_1 +
+                            3 * a122 * z_2**3 * q_1 +
+                            12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
+                            4 * a1222 * q_1 * z_2**4 -
+                            8 * a1222 * z_1 * q_1 * z_2**3 +
+                            12 * a1122 * z_1 * q_1 * z_2**3 -
+                            6 * a1122 * z_1**2 * q_1 * z_2**2 +
+                            20 * a11112 * z_1**3 * q_1 * z_2**2 +
+                            30 * a11122 * z_1**2 * q_1 * z_2**3 -
+                            10 * a11122 * z_1**3 * q_1 * z_2**2 +
+                            20 * a11222 * z_1 * q_1 * z_2**4 -
+                            20 * a11222 * z_1**2 * q_1 * z_2**3 +
+                            5 * a12222 * q_1 * z_2**5 -
+                            15 * a12222 * z_1 * q_1 * z_2**4
+                        )
+                        gamma_2 = torch.exp(
+                            2 * a12 * z_1**2 * q_2 +
+                            3 * a112 * z_1**3 * q_2 -
+                            3 * a112 * z_1**2 * z_2 * q_2 +
+                            6 * a122 * z_1**2 * z_2 * q_2 +
+                            4 * a1112 * z_1**4 * q_2 -
+                            8 * a1112 * z_1**3 * z_2 * q_2 +
+                            12 * a1122 * z_1**2 * z_2**2 * q_2 +
+                            12 * a1222 * z_1**3 * z_2 * q_2 -
+                            6 * a1222 * z_1**2 * z_2**2 * q_2 +
+                            5 * a11112 * z_1**5 * q_2 -
+                            15 * a11112 * z_1**4 * z_2 * q_2 +
+                            10 * a11122 * z_1**4 * z_2 * q_2 -
+                            10 * a11122 * z_1**3 * z_2**2 * q_2 +
+                            30 * a11222 * z_1**2 * z_2**3 * q_2 -
+                            10 * a11222 * z_1**3 * z_2**2 * q_2 +
+                            20 * a12222 * z_1**2 * z_2**3 * q_2
+                        )
                     
                     gamma_1_inf = torch.exp(2*a12*q_1 + 3*a122*q_1)
                 if self.fugacity_balance is None:
