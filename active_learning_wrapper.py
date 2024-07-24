@@ -1972,6 +1972,8 @@ def get_fingerprint(previous_remaining_data:MoleculeDataset,active_args:ActiveAr
         os.path.join(active_args.active_save_dir, "finger_print.csv"),
         "--num_workers",0
     ]
+    if active_args.num_molecules > 1:
+        argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
     if gpu is not None:
         argument_input.extend(["--gpu", str(gpu)])
     fp_args = FingerprintArgs().parse_args(argument_input)
@@ -1982,7 +1984,7 @@ def get_fingerprint(previous_remaining_data:MoleculeDataset,active_args:ActiveAr
     with open(os.path.join(active_args.active_save_dir, "finger_print.csv")) as csvfile:
         csvreader = csv.reader(csvfile)
         next(csvreader)
-        lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+        lists_per_row = [list(map(float, row[active_args.num_molecules:])) for row in csvreader]
     lists_per_row=np.array(lists_per_row)
     mean = np.mean(lists_per_row, axis=0)
     std_dev = np.std(lists_per_row, axis=0)
@@ -2053,6 +2055,8 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
             os.path.join(active_args.active_save_dir, "init_finger_print.csv"),
             "--num_workers",0
         ]
+        if active_args.num_molecules > 1:
+            argument_input.extend(["--number_of_molecules", str(active_args.num_molecules)])
         if gpu is not None:
             argument_input.extend(["--gpu", str(gpu)])
         fp_args = FingerprintArgs().parse_args(argument_input)
@@ -2063,13 +2067,13 @@ def get_fingerprint_init(nontest_data:MoleculeDataset,active_args:ActiveArgs,gpu
         with open(os.path.join(active_args.active_save_dir, "init_finger_print.csv")) as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
-            lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+            lists_per_row = [list(map(float, row[active_args.num_molecules:])) for row in csvreader]
     elif active_args.model_fp_path is not None:
         lists_per_row = []
         with open(active_args.model_fp_path) as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)
-            lists_per_row = [list(map(float, row[1:])) for row in csvreader]
+            lists_per_row = [list(map(float, row[active_args.num_molecules:])) for row in csvreader]
     
     lists_per_row=np.array(lists_per_row)
     mean = np.mean(lists_per_row, axis=0)
