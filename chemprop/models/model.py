@@ -245,26 +245,25 @@ class MoleculeModel(nn.Module):
     def forward_vp(
             self,
             output: torch.Tensor,
-            hybrid_model_features_batch: torch.Tensor,
+            temperature_batch: torch.Tensor,
     ):
         """
         Calculates the vapor pressure within the forward function
         """
-        temp_batch = hybrid_model_features_batch[:,[2]]
         if self.vp == "basic":
             output = output
         if self.vp == "two_var":
             antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
-            output = antoine_a + (antoine_b / temp_batch)
+            output = antoine_a + (antoine_b / temperature_batch)
         if self.vp == "antoine":
             antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
-            output = antoine_a - (antoine_b / (antoine_c + temp_batch))
+            output = antoine_a - (antoine_b / (antoine_c + temperature_batch))
         if self.vp == "four_var":
             antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
-            output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, 6))
+            output = antoine_a + (antoine_b / temperature_batch) + (antoine_c * torch.log(temperature_batch)) + (antoine_d * torch.pow(temperature_batch, 6))
         if self.vp == "five_var":
             antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
-            output = antoine_a + (antoine_b / temp_batch) + (antoine_c * torch.log(temp_batch)) + (antoine_d * torch.pow(temp_batch, antoine_e))
+            output = antoine_a + (antoine_b / temperature_batch) + (antoine_c * torch.log(temperature_batch)) + (antoine_d * torch.pow(temperature_batch, antoine_e))
         return output
 
     def fingerprint(
@@ -357,10 +356,15 @@ class MoleculeModel(nn.Module):
         if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
+        if self.fugacity_balance == "intrinsic_vp" or self.vle == "wohl":
+            temperature_batch = hybrid_model_features_batch[:,[2]]
+        elif self.vp is not None:
+            temperature_batch = hybrid_model_features_batch[:,[0]]            
+
         if self.noisy_temperature is not None and self.training:
             features_batch = np.array(features_batch)
             noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
-            features_batch[:,0] = features_batch[:,0] + noise_batch
+            temperature_batch = temperature_batch + noise_batch
 
         if self.is_atom_bond_targets:
             encodings = self.encoder(
@@ -386,17 +390,17 @@ class MoleculeModel(nn.Module):
             # Extra outputs for VLE models
             if self.vle == "wohl" or self.fugacity_balance == "intrinsic_vp":
                 encoding_1 = encodings[:,:self.hidden_size]
-                encoding_1 = torch.concatenate([encoding_1, hybrid_model_features_batch[:,[2]]], axis=1) # include T feature at the end
+                encoding_1 = torch.concatenate([encoding_1, temperature_batch], axis=1) # include T feature at the end
                 encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # includes features at the end
-                encoding_2 = torch.concatenate([encoding_2, hybrid_model_features_batch[:,[2]]], axis=1) # include T feature at the end
+                encoding_2 = torch.concatenate([encoding_2, temperature_batch], axis=1) # include T feature at the end
                 if self.vle == "wohl":
                     q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
                     q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
                 if self.fugacity_balance == "intrinsic_vp":
                     vp1_output = self.intrinsic_vp(encoding_1)
                     vp2_output = self.intrinsic_vp(encoding_2)
-                    log10p1sat = self.forward_vp(vp1_output, hybrid_model_features_batch)
-                    log10p2sat = self.forward_vp(vp2_output, hybrid_model_features_batch)
+                    log10p1sat = self.forward_vp(vp1_output, temperature_batch)
+                    log10p2sat = self.forward_vp(vp2_output, temperature_batch)
 
         # Don't apply sigmoid during training when using BCEWithLogitsLoss
         if (
@@ -547,7 +551,7 @@ class MoleculeModel(nn.Module):
 
         # VP
         if self.vp is not None and self.fugacity_balance is None:
-            output = self.forward_vp(output, hybrid_model_features_batch)
+            output = self.forward_vp(output, temperature_batch)
 
         # Multi output loss functions
         if self.loss_function == "mve":
