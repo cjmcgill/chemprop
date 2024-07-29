@@ -419,28 +419,9 @@ def get_data(path: str,
     else:
         features_data = None
 
-    if phase_features_path is not None:
-        phase_features = load_features(phase_features_path)
-        for d_phase in phase_features:
-            if not (d_phase.sum() == 1 and np.count_nonzero(d_phase) == 1):
-                raise ValueError('Phase features must be one-hot encoded.')
-        if features_data is not None:
-            features_data = np.concatenate((features_data, phase_features), axis=1)
-        else:  # if there are no other molecular features, phase features become the only molecular features
-            features_data = np.array(phase_features)
-    else:
-        phase_features = None
-    
-    # Load constraints
-    if constraints_path is not None:
-        constraints_data, raw_constraints_data = get_constraints(
-            path=constraints_path,
-            target_columns=args.target_columns,
-            save_raw_data=args.save_smiles_splits
-        )
-    else:
-        constraints_data = None
-        raw_constraints_data = None
+    phase_features = None
+    constraints_data = None
+    raw_constraints_data = None
 
     # Load data weights
     if data_weights_path is not None:
@@ -458,10 +439,7 @@ def get_data(path: str,
         )
 
     # Find targets provided as inequalities
-    if loss_function == 'bounded_mse':
-        gt_targets, lt_targets = get_inequality_targets(path=path, target_columns=target_columns)
-    else:
-        gt_targets, lt_targets = None, None
+    gt_targets, lt_targets = None, None
 
     # Load data
     with open(path) as f:
@@ -545,29 +523,8 @@ def get_data(path: str,
 
         atom_features = None
         atom_descriptors = None
-        if args is not None and args.atom_descriptors is not None:
-            try:
-                descriptors = load_valid_atom_or_bond_features(atom_descriptors_path, [x[0] for x in all_smiles])
-            except Exception as e:
-                raise ValueError(f'Failed to load or validate custom atomic descriptors or features: {e}')
-
-            if args.atom_descriptors == 'feature':
-                atom_features = descriptors
-            elif args.atom_descriptors == 'descriptor':
-                atom_descriptors = descriptors
-
         bond_features = None
         bond_descriptors = None
-        if args is not None and args.bond_descriptors is not None:
-            try:
-                descriptors = load_valid_atom_or_bond_features(bond_descriptors_path, [x[0] for x in all_smiles])
-            except Exception as e:
-                raise ValueError(f'Failed to load or validate custom bond descriptors or features: {e}')
-
-            if args.bond_descriptors == 'feature':
-                bond_features = descriptors
-            elif args.bond_descriptors == 'descriptor':
-                bond_descriptors = descriptors
 
         # Make hybrid_model_features for VLE
         if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
@@ -597,13 +554,11 @@ def get_data(path: str,
             elif args.vle == "basic": # this may not be the best place to call this error
                 raise ValueError("VLE model 'basic' is not supported for fugacity balance.")
         elif args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
-            if args.vle in ["basic", "activity"]:
-                xs = np.array(all_features)[:, :2]
-                Psat = 10**np.array(all_features)[:, 3:5]
-                PRaoult = np.sum(xs * Psat, axis=1, keepdims=True)
-                log10PRaoult = np.log10(PRaoult)
-                all_features = np.concatenate([np.array(all_features), log10PRaoult], axis=1).tolist() # x1, x2, T, log10P1sat, log10P2sat, log10PRaoult
-            else: # features considered in interaction for wohl and others
+            if args.vle == "basic":
+                pass # all_features = [x1, x2, T, log10P1sat, log10P2sat]
+            if args.vle == "activity":
+                all_features = np.array(all_features)[:, :3].tolist() # x1, x2, T
+            else: # features considered in binary interactions for wohl and others
                 all_features = np.array(all_features)[:, [2]].tolist() # T only
 
         data = MoleculeDataset([
