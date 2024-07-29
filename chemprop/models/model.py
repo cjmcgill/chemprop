@@ -26,6 +26,7 @@ class MoleculeModel(nn.Module):
         self.loss_function = args.loss_function
         self.vp = args.vp
         self.vle = args.vle
+        self.wohl_order = args.wohl_order
         self.fugacity_balance = args.fugacity_balance
         self.device = args.device
         self.hidden_size = args.hidden_size
@@ -69,14 +70,14 @@ class MoleculeModel(nn.Module):
 
         if self.fugacity_balance is not None:
             if self.vle == "activity":
-                self.relative_output_size *= 1/2
+                self.relative_output_size *= 2/4
             elif self.vle == "wohl":
                 if args.wohl_order == 3:
-                    self.relative_output_size *= 3/4 #3 parameter for 3rd-order Wohl model
-                elif args.wohl_order == 6:
-                    self.relative_output_size *= 6/4 #6 parameter for 6th-order Wohl model
-                elif args.wohl_order == 9:
-                    self.relative_output_size *= 10/4 #10 parameter for 9th-order wohl model
+                    self.relative_output_size *= args.wohl_params / 4 #3 parameter for 3rd-order Wohl model
+                elif args.wohl_order == 4:
+                    self.relative_output_size *= args.wohl_params / 4 #6 parameter for 6th-order Wohl model
+                elif args.wohl_order == 5:
+                    self.relative_output_size *= args.wohl_params / 4 #10 parameter for 9th-order wohl model
                 
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
@@ -84,11 +85,11 @@ class MoleculeModel(nn.Module):
             self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
         elif self.vle == "wohl":
             if args.wohl_order == 3:
-                self.relative_output_size *= 1 #uses three function parameters internally and returns three results
-            elif args.wohl_order == 6:
-                self.relative_output_size *= 2 #for 6th order Wohl
-            elif args.wohl_order == 9:
-                self.relative_output_size *= 10/3 #for 9th order wohl
+                self.relative_output_size *= args.wohl_params / 3 #uses three function parameters internally and returns three results
+            elif args.wohl_order == 4:
+                self.relative_output_size *= args.wohl_params / 3 #for 6th order Wohl
+            elif args.wohl_order == 5:
+                self.relative_output_size *= args.wohl_params / 3 #for 9th order wohl
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
         elif self.vp == 'two_var':
@@ -353,7 +354,6 @@ class MoleculeModel(nn.Module):
         :param bond_types_batch: A list of PyTorch tensors storing bond types of each bond determined by RDKit molecules.
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions.
         """
-        args = self.args
         if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
@@ -446,17 +446,17 @@ class MoleculeModel(nn.Module):
                     # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
                     # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
                 else: #vle == "wohl"
-                    if args.wohl_order ==3:
+                    if self.wohl_order == 3:
                         a12, a112, a122 = torch.chunk(output, 3, dim=1)
-                    elif args.wohl_order == 6:
+                    elif self.wohl_order == 4:
                         a12, a112, a122, a1112, a1222, a1122 = torch.chunk(output, 6, dim=1)
-                    elif args.wohl_order == 9:
+                    elif self.wohl_order == 5:
                         a12, a112, a122, a1112, a1222, a1122, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
                     
                     #volume fractions Zi
                     z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
                     z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
-                    if args.wohl_order ==3:
+                    if self.wohl_order == 3:
                         gamma_1 = torch.exp(
                             2 * a12 * z_2**2 * q_1 +
                             6 * a112 * z_1 * z_2**2 * q_1 -
@@ -469,7 +469,7 @@ class MoleculeModel(nn.Module):
                             3 * a112 * z_1**2 * z_2 * q_2 +
                             6 * a122 * z_1**2 * z_2 * q_2
                         )
-                    elif args.wohl_order ==6:
+                    elif self.wohl_order == 4:
                         gamma_1 = torch.exp(
                             2 * a12 * z_2**2 * q_1 +
                             6 * a112 * z_1 * z_2**2 * q_1 -
@@ -493,7 +493,7 @@ class MoleculeModel(nn.Module):
                             6 * a1222 * z_1**2 * z_2**2 * q_2
                         )
 
-                    elif args.wohl_order == 9:
+                    elif self.wohl_order == 5:
                         gamma_1 = torch.exp(
                             2 * a12 * z_2**2 * q_1 +
                             6 * a112 * z_1 * z_2**2 * q_1 -
@@ -543,18 +543,7 @@ class MoleculeModel(nn.Module):
                     log10P = torch.log10(P)
                     output = torch.cat([y_1, y_2, log10P], axis=1)
                 else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
-                    # if self.training:
                         output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
-                    # else: # predict mode
-                    #     p1sat = 10**log10p1sat
-                    #     p2sat = 10**log10p2sat
-                    #     P1 = p1sat * x_1 * gamma_1
-                    #     P2 = p2sat * x_2 * gamma_2
-                    #     P = P1 + P2
-                    #     y_1 = P1 / P
-                    #     y_2 = P2 / P
-                    #     log10P = torch.log10(P)
-                    #     output = torch.cat([y_1, y_2, log10P, gamma_1_inf], axis=1)
 
         # VP
         if self.vp is not None and self.fugacity_balance is None:

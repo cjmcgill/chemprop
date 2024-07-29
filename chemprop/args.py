@@ -451,8 +451,6 @@ class TrainArgs(CommonArgs):
 
     # Training arguments
 
-    wohl_order: int = 3  # default to 3rd-order Wohl
-    
     epochs: int = 30
     """Number of epochs to run."""
     warmup_epochs: float = 2.0
@@ -509,6 +507,8 @@ class TrainArgs(CommonArgs):
     """Whether to use a noise factor to smooth the prediction of vapor pressure parameters."""
     vle: Literal["basic", "activity", "wohl"] = None
     """Which VLE model to use."""
+    wohl_order: Literal[3,4,5] = 3  # default to 3rd-order Wohl
+    """The highest interaction order to be considered in a Wohl VLE model"""
     fugacity_balance: Literal['intrinsic_vp', 'tabulated_vp'] = None
     """Whether to use an activity prediction based on the squared difference of ln fugacity between the liquid and vapor phases."""
 
@@ -645,10 +645,13 @@ class TrainArgs(CommonArgs):
             self.mpn_shared = True
             self.number_of_molecules = 2
 
-        # Validate wohl_order
-        if self.vle == "wohl" and self.wohl_order not in [3, 6, 9]:
-                    raise ValueError("Invalid wohl_order. It must be either 3, 6, or 9.")
-                    
+        # Set number of wohl parameters based on order
+        if self.vle == "wohl":
+            wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
+            self.wohl_params = wohl_number_parameters_dict[self.wohl_order]
+        else:
+            self.wohl_params = None
+
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:
             raise ValueError('In reaction_solvent mode, --number_of_molecules 2 must be specified.')
