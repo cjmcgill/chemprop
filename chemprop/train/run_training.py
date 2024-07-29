@@ -136,19 +136,9 @@ def run_training(args: TrainArgs,
     else:
         features_scaler = None
 
-    if args.atom_descriptor_scaling and args.atom_descriptors is not None:
-        atom_descriptor_scaler = train_data.normalize_features(replace_nan_token=0, scale_atom_descriptors=True)
-        val_data.normalize_features(atom_descriptor_scaler, scale_atom_descriptors=True)
-        test_data.normalize_features(atom_descriptor_scaler, scale_atom_descriptors=True)
-    else:
-        atom_descriptor_scaler = None
+    atom_descriptor_scaler = None
 
-    if args.bond_descriptor_scaling and args.bond_descriptors is not None:
-        bond_descriptor_scaler = train_data.normalize_features(replace_nan_token=0, scale_bond_descriptors=True)
-        val_data.normalize_features(bond_descriptor_scaler, scale_bond_descriptors=True)
-        test_data.normalize_features(bond_descriptor_scaler, scale_bond_descriptors=True)
-    else:
-        bond_descriptor_scaler = None
+    bond_descriptor_scaler = None
 
     args.train_data_size = len(train_data)
 
@@ -172,61 +162,40 @@ def run_training(args: TrainArgs,
     # Initialize scaler and scale training targets by subtracting mean and dividing standard deviation (regression only)
     if args.dataset_type == 'regression':
         debug('Fitting scaler')
-        if args.is_atom_bond_targets:
-            scaler = None
-            atom_bond_scaler = train_data.normalize_atom_bond_targets()
-            hybrid_model_features_scaler = None
+        # scale targets
+        if args.fugacity_balance is not None: # no scaling for y1, y2, g1_inf
+            unscaled_target_indices = [0,1,3]
+        elif args.vle is not None:
+            unscaled_target_indices = [0,1]
         else:
-            # scale targets
-            if args.fugacity_balance is not None: # no scaling for y1, y2, g1_inf
-                unscaled_target_indices = [0,1,3]
-            elif args.vle is not None:
-                unscaled_target_indices = [0,1]
-            else:
-                unscaled_target_indices = None
-            scaler = train_data.normalize_targets(unscaled_target_indices)
-            # hybrid model features scaling
-            if args.fugacity_balance is not None: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
-                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
-                    target_scaler=scaler,
-                    matched_hybrid_model_features_indices=[3,4,7], # scales P1sat and P2sat the same as P target
-                    corresponding_target_indices=[2,2,2],
-                    scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
-                )
-            elif args.vle is not None and args.vle != "basic":
-                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
-                    target_scaler=scaler,
-                    matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
-                    corresponding_target_indices=[2,2],
-                    scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
-                )
-            elif args.vp is not None:
-                hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
-                    target_scaler=scaler,
-                    scale_only_indices=[0],
-                )
-            else:
-                hybrid_model_features_scaler = None
-            val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
-            test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
-            atom_bond_scaler = None
-        args.spectra_phase_mask = None
-
-    elif args.dataset_type == 'spectra':
-        debug('Normalizing spectra and excluding spectra regions based on phase')
-        args.spectra_phase_mask = load_phase_mask(args.spectra_phase_mask_path)
-        for dataset in [train_data, test_data, val_data]:
-            data_targets = normalize_spectra(
-                spectra=dataset.targets(),
-                phase_features=dataset.phase_features(),
-                phase_mask=args.spectra_phase_mask,
-                excluded_sub_value=None,
-                threshold=args.spectra_target_floor,
+            unscaled_target_indices = None
+        scaler = train_data.normalize_targets(unscaled_target_indices)
+        # hybrid model features scaling
+        if args.fugacity_balance is not None: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
+            hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                target_scaler=scaler,
+                matched_hybrid_model_features_indices=[3,4,7], # scales P1sat and P2sat the same as P target
+                corresponding_target_indices=[2,2,2],
+                scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
             )
-            dataset.set_targets(data_targets)
-        scaler = None
+        elif args.vle is not None and args.vle != "basic":
+            hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                target_scaler=scaler,
+                matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
+                corresponding_target_indices=[2,2],
+                scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
+            )
+        elif args.vp is not None:
+            hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                target_scaler=scaler,
+                scale_only_indices=[0],
+            )
+        else:
+            hybrid_model_features_scaler = None
+        val_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
+        test_data.normalize_hybrid_model_features(hybrid_model_features_scaler=hybrid_model_features_scaler)
         atom_bond_scaler = None
-        hybrid_model_features_scaler = None
+        args.spectra_phase_mask = None
 
     else:
         args.spectra_phase_mask = None
@@ -239,16 +208,7 @@ def run_training(args: TrainArgs,
 
     # Set up test set evaluation
     test_smiles, test_targets = test_data.smiles(), test_data.targets()
-    if args.dataset_type == 'multiclass':
-        sum_test_preds = np.zeros((len(test_smiles), args.num_tasks, args.multiclass_num_classes))
-    elif args.is_atom_bond_targets:
-        sum_test_preds = []
-        for tb in zip(*test_data.targets()):
-            tb = np.concatenate(tb)
-            sum_test_preds.append(np.zeros((tb.shape[0], 1)))
-        sum_test_preds = np.array(sum_test_preds, dtype=object)
-    else:
-        sum_test_preds = np.zeros((len(test_smiles), args.num_tasks))
+    sum_test_preds = np.zeros((len(test_smiles), args.num_tasks))
 
     # Automatically determine whether to cache
     if len(data) <= args.cache_cutoff:
@@ -300,17 +260,9 @@ def run_training(args: TrainArgs,
             model = MoleculeModel(args)
 
         # Optionally, overwrite weights:
-        if args.checkpoint_frzn is not None:
-            debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
-            model = load_frzn_model(model=model, path=args.checkpoint_frzn, current_args=args, logger=logger)
-
         debug(model)
 
-        if args.checkpoint_frzn is not None:
-            debug(f'Number of unfrozen parameters = {param_count(model):,}')
-            debug(f'Total number of parameters = {param_count_all(model):,}')
-        else:
-            debug(f'Number of parameters = {param_count_all(model):,}')
+        debug(f'Number of parameters = {param_count_all(model):,}')
 
         if args.cuda:
             debug('Moving model to cuda')
