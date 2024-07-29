@@ -526,6 +526,8 @@ def get_data(path: str,
         bond_features = None
         bond_descriptors = None
 
+        original_features = all_features # before VLE/VP modification
+
         # Make hybrid_model_features for VLE
         if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
             if [] not in all_targets:
@@ -573,6 +575,7 @@ def get_data(path: str,
                 lt_targets=all_lt[i] if lt_targets is not None else None,
                 features_generator=features_generator,
                 features=all_features[i] if features_data is not None else None,
+                original_features=original_features[i] if features_data is not None else None,
                 phase_features=all_phase_features[i] if phase_features is not None else None,
                 hybrid_model_features=all_hybrid_model_features[i] if all_hybrid_model_features is not None else None,
                 atom_features=atom_features[i] if atom_features is not None else None,

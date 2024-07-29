@@ -64,6 +64,7 @@ class MoleculeDatapoint:
                  gt_targets: List[List[bool]] = None,
                  lt_targets: List[List[bool]] = None,
                  features: np.ndarray = None,
+                 original_features: np.ndarray = None,
                  features_generator: List[str] = None,
                  phase_features: List[float] = None,
                  hybrid_model_features: List[float] = None,
@@ -74,7 +75,8 @@ class MoleculeDatapoint:
                  raw_constraints: np.ndarray = None,
                  constraints: np.ndarray = None,
                  overwrite_default_atom_features: bool = False,
-                 overwrite_default_bond_features: bool = False):
+                 overwrite_default_bond_features: bool = False,
+                 ):
         """
         :param smiles: A list of the SMILES strings for the molecules.
         :param targets: A list of targets for the molecule (contains None for unknown target values).
@@ -101,6 +103,7 @@ class MoleculeDatapoint:
         self.bond_targets = bond_targets
         self.row = row
         self.features = features
+        self.original_features = original_features
         self.features_generator = features_generator
         self.phase_features = phase_features
         self.hybrid_model_features = hybrid_model_features
@@ -444,6 +447,17 @@ class MoleculeDataset(Dataset):
             return None
 
         return [d.features for d in self._data]
+    
+    def original_features(self) -> List[np.ndarray]:
+        """
+        Returns the features associated with each molecule (if they exist).
+
+        :return: A list of 1D numpy arrays containing the features for each molecule or None if there are no features.
+        """
+        if len(self._data) == 0 or self._data[0].original_features is None:
+            return None
+
+        return [d.original_features for d in self._data]
 
     def phase_features(self) -> List[np.ndarray]:
         """
