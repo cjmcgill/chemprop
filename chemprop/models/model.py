@@ -21,6 +21,7 @@ class MoleculeModel(nn.Module):
         """
         super(MoleculeModel, self).__init__()
         self.args = args
+        self.is_atom_bond_targets = False
         self.classification = args.dataset_type == "classification"
         self.multiclass = args.dataset_type == "multiclass"
         self.loss_function = args.loss_function
@@ -31,42 +32,10 @@ class MoleculeModel(nn.Module):
         self.device = args.device
         self.hidden_size = args.hidden_size
         self.noisy_temperature = args.noisy_temperature
-
-        if hasattr(args, "train_class_sizes"):
-            self.train_class_sizes = args.train_class_sizes
-        else:
-            self.train_class_sizes = None
-
-        # when using cross entropy losses, no sigmoid or softmax during training. But they are needed for mcc loss.
-        if self.classification or self.multiclass:
-            self.no_training_normalization = args.loss_function in [
-                "cross_entropy",
-                "binary_cross_entropy",
-            ]
-
-        self.is_atom_bond_targets = args.is_atom_bond_targets
-
-        if self.is_atom_bond_targets:
-            self.atom_targets, self.bond_targets = args.atom_targets, args.bond_targets
-            self.atom_constraints, self.bond_constraints = (
-                args.atom_constraints,
-                args.bond_constraints,
-            )
-            self.adding_bond_types = args.adding_bond_types
+        self.sigmoid = nn.functional.sigmoid
+        self.softplus = nn.functional.softplus
 
         self.relative_output_size = 1
-        if self.multiclass:
-            self.relative_output_size *= args.multiclass_num_classes
-        if self.loss_function == "mve":
-            self.relative_output_size *= 2  # return means and variances
-        if self.loss_function == "dirichlet" and self.classification:
-            self.relative_output_size *= (
-                2  # return dirichlet parameters for positive and negative class
-            )
-        if self.loss_function == "evidential":
-            self.relative_output_size *= (
-                4  # return four evidential parameters: gamma, lambda, alpha, beta
-            )
 
         if self.fugacity_balance is not None:
             if self.vle == "activity":
@@ -101,16 +70,6 @@ class MoleculeModel(nn.Module):
         elif self.vp == "five_var":
             self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
 
-
-        if self.classification or self.vle is not None:
-            self.sigmoid = nn.Sigmoid()
-
-        if self.multiclass:
-            self.multiclass_softmax = nn.Softmax(dim=2)
-
-        if self.loss_function in ["mve", "evidential", "dirichlet"]:
-            self.softplus = nn.Softplus()
-
         self.create_encoder(args)
         self.create_ffn(args)
 
@@ -138,109 +97,44 @@ class MoleculeModel(nn.Module):
 
         :param args: A :class:`~chemprop.args.TrainArgs` object containing model arguments.
         """
-        self.multiclass = args.dataset_type == "multiclass"
-        if self.multiclass:
-            self.num_classes = args.multiclass_num_classes
-        if args.features_only:
-            first_linear_dim = args.features_size
-        else:
-            if args.reaction_solvent:
-                first_linear_dim = args.hidden_size + args.hidden_size_solvent
-            else:
-                first_linear_dim = args.hidden_size * args.number_of_molecules
-            if args.use_input_features:
-                first_linear_dim += args.features_size
-
-        if args.atom_descriptors == "descriptor":
-            atom_first_linear_dim = first_linear_dim + args.atom_descriptors_size
-        else:
-            atom_first_linear_dim = first_linear_dim
-
-        if args.bond_descriptors == "descriptor":
-            bond_first_linear_dim = first_linear_dim + args.bond_descriptors_size
-        else:
-            bond_first_linear_dim = first_linear_dim
+        first_linear_dim = args.hidden_size * args.number_of_molecules
+        if args.use_input_features:
+            first_linear_dim += args.features_size
 
         # Create FFN layers
-        if self.is_atom_bond_targets:
-            self.readout = MultiReadout(
-                atom_features_size=atom_first_linear_dim,
-                bond_features_size=bond_first_linear_dim,
-                atom_hidden_size=args.ffn_hidden_size + args.atom_descriptors_size,
-                bond_hidden_size=args.ffn_hidden_size + args.bond_descriptors_size,
-                num_layers=args.ffn_num_layers,
-                output_size=self.relative_output_size,
-                dropout=args.dropout,
-                activation=args.activation,
-                atom_constraints=args.atom_constraints,
-                bond_constraints=args.bond_constraints,
-                shared_ffn=args.shared_atom_bond_ffn,
-                weights_ffn_num_layers=args.weights_ffn_num_layers,
-            )
-        else:
-            self.readout = build_ffn(
-                first_linear_dim=atom_first_linear_dim,
+        self.readout = build_ffn(
+            first_linear_dim=first_linear_dim,
+            hidden_size=args.ffn_hidden_size,
+            num_layers=args.ffn_num_layers,
+            output_size=int(np.rint(self.relative_output_size * args.num_tasks)),
+            dropout=args.dropout,
+            activation=args.activation,
+            dataset_type=args.dataset_type,
+            spectra_activation=args.spectra_activation,
+        )
+        if self.vle == "wohl":
+            self.wohl_q = build_ffn(
+                first_linear_dim=self.hidden_size + 1, # +1 for temperature only
                 hidden_size=args.ffn_hidden_size,
                 num_layers=args.ffn_num_layers,
-                output_size=int(np.rint(self.relative_output_size * args.num_tasks)),
+                output_size=1, # q
                 dropout=args.dropout,
                 activation=args.activation,
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-            if self.vle == "wohl":
-                self.wohl_q = build_ffn(
-                    first_linear_dim=self.hidden_size + 1, # +1 for temperature only
-                    hidden_size=args.ffn_hidden_size,
-                    num_layers=args.ffn_num_layers,
-                    output_size=1, # q
-                    dropout=args.dropout,
-                    activation=args.activation,
-                    dataset_type=args.dataset_type,
-                    spectra_activation=args.spectra_activation,
-                )
-            vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
-            if self.fugacity_balance == "intrinsic_vp":
-                self.intrinsic_vp = build_ffn(
-                    first_linear_dim=self.hidden_size + 1, # +1 for temperature only
-                    hidden_size=args.ffn_hidden_size,
-                    num_layers=args.ffn_num_layers,
-                    output_size=vp_output_size_dict[args.vp],
-                    dropout=args.dropout,
-                    activation=args.activation,
-                    dataset_type=args.dataset_type,
-                    spectra_activation=args.spectra_activation,
-                )
-
-        if args.checkpoint_frzn is not None:
-            if args.frzn_ffn_layers > 0:
-                if self.is_atom_bond_targets:
-                    if args.shared_atom_bond_ffn:
-                        for param in list(self.readout.atom_ffn_base.parameters())[
-                            0 : 2 * args.frzn_ffn_layers
-                        ]:
-                            param.requires_grad = False
-                        for param in list(self.readout.bond_ffn_base.parameters())[
-                            0 : 2 * args.frzn_ffn_layers
-                        ]:
-                            param.requires_grad = False
-                    else:
-                        for ffn in self.readout.ffn_list:
-                            if ffn.constraint:
-                                for param in list(ffn.ffn.parameters())[
-                                    0 : 2 * args.frzn_ffn_layers
-                                ]:
-                                    param.requires_grad = False
-                            else:
-                                for param in list(ffn.ffn_readout.parameters())[
-                                    0 : 2 * args.frzn_ffn_layers
-                                ]:
-                                    param.requires_grad = False
-                else:
-                    for param in list(self.readout.parameters())[
-                        0 : 2 * args.frzn_ffn_layers
-                    ]:  # Freeze weights and bias for given number of layers
-                        param.requires_grad = False
+        vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
+        if self.fugacity_balance == "intrinsic_vp":
+            self.intrinsic_vp = build_ffn(
+                first_linear_dim=self.hidden_size + 1, # +1 for temperature only
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=vp_output_size_dict[args.vp],
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
 
     def forward_vp(
             self,
@@ -366,63 +260,30 @@ class MoleculeModel(nn.Module):
             noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
             temperature_batch = temperature_batch + noise_batch
 
-        if self.is_atom_bond_targets:
-            encodings = self.encoder(
-                batch,
-                features_batch,
-                atom_descriptors_batch,
-                atom_features_batch,
-                bond_descriptors_batch,
-                bond_features_batch,
-            )
-            output = self.readout(encodings, constraints_batch, bond_types_batch)
-        else:
-            encodings = self.encoder(
-                batch,
-                features_batch,
-                atom_descriptors_batch,
-                atom_features_batch,
-                bond_descriptors_batch,
-                bond_features_batch,
-            )
-            output = self.readout(encodings)
+        encodings = self.encoder(
+            batch,
+            features_batch,
+            atom_descriptors_batch,
+            atom_features_batch,
+            bond_descriptors_batch,
+            bond_features_batch,
+        )
+        output = self.readout(encodings)
 
-            # Extra outputs for VLE models
-            if self.vle == "wohl" or self.fugacity_balance == "intrinsic_vp":
-                encoding_1 = encodings[:,:self.hidden_size]
-                encoding_1 = torch.concatenate([encoding_1, temperature_batch], axis=1) # include T feature at the end
-                encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # includes features at the end
-                encoding_2 = torch.concatenate([encoding_2, temperature_batch], axis=1) # include T feature at the end
-                if self.vle == "wohl":
-                    q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
-                    q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
-                if self.fugacity_balance == "intrinsic_vp":
-                    vp1_output = self.intrinsic_vp(encoding_1)
-                    vp2_output = self.intrinsic_vp(encoding_2)
-                    log10p1sat = self.forward_vp(vp1_output, temperature_batch)
-                    log10p2sat = self.forward_vp(vp2_output, temperature_batch)
-
-        # Don't apply sigmoid during training when using BCEWithLogitsLoss
-        if (
-            self.classification
-            and not (self.training and self.no_training_normalization)
-            and self.loss_function != "dirichlet"
-        ):
-            if self.is_atom_bond_targets:
-                output = [self.sigmoid(x) for x in output]
-            else:
-                output = self.sigmoid(output)
-        if self.multiclass:
-            output = output.reshape(
-                (output.shape[0], -1, self.num_classes)
-            )  # batch size x num targets x num classes per target
-            if (
-                not (self.training and self.no_training_normalization)
-                and self.loss_function != "dirichlet"
-            ):
-                output = self.multiclass_softmax(
-                    output
-                )  # to get probabilities during evaluation, but not during training when using CrossEntropyLoss
+        # Extra outputs for VLE models
+        if self.vle == "wohl" or self.fugacity_balance == "intrinsic_vp":
+            encoding_1 = encodings[:,:self.hidden_size]
+            encoding_1 = torch.concatenate([encoding_1, temperature_batch], axis=1) # include T feature at the end
+            encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # includes features at the end
+            encoding_2 = torch.concatenate([encoding_2, temperature_batch], axis=1) # include T feature at the end
+            if self.vle == "wohl":
+                q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
+                q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+            if self.fugacity_balance == "intrinsic_vp":
+                vp1_output = self.intrinsic_vp(encoding_1)
+                vp2_output = self.intrinsic_vp(encoding_2)
+                log10p1sat = self.forward_vp(vp1_output, temperature_batch)
+                log10p2sat = self.forward_vp(vp2_output, temperature_batch)
 
         # Apply post-processing for VLE models
         if self.vle is not None:
@@ -443,12 +304,6 @@ class MoleculeModel(nn.Module):
                 if self.vle == "activity":
                     gamma_1 = torch.exp(output[:,[0]])
                     gamma_2 = torch.exp(output[:,[1]])
-
-                    # There's a coefficient before the fitted A that you can get using scipy.special.binom(ith-wohl-degree, jth term) where term 0 and i are defined as zero for excess properties
-                    # The ith degree of Wohl adds i terms to the expansion (but first and last are zero so really i-2)
-                    # all terms in the expansion are of the form gE = Sum A * z**n1 + z**n2 * (N1*q1+N2*q2)
-                    # for to get ln(gamma1) * RT = d/dN1 [Sum A * z1**n1 + z2**n2 * (N1*q1+N2*q2)]
-                    # and each term is d/dN1 [A * z1**n1 * z2**n2] = A * n1 * z1**(n1-1) * z2**(n2+1) * q1 + A * (1-n2) * z1**n1 * z2**n2 * q1
                 else: #vle == "wohl"
                     if self.wohl_order == 3:
                         a12, a112, a122 = torch.chunk(output, 3, dim=1)
@@ -548,55 +403,8 @@ class MoleculeModel(nn.Module):
                     output = torch.cat([y_1, y_2, log10P], axis=1)
                 else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
                         output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
-
         # VP
         if self.vp is not None and self.fugacity_balance is None:
             output = self.forward_vp(output, temperature_batch)
-
-        # Multi output loss functions
-        if self.loss_function == "mve":
-            if self.is_atom_bond_targets:
-                outputs = []
-                for x in output:
-                    means, variances = torch.split(x, x.shape[1] // 2, dim=1)
-                    variances = self.softplus(variances)
-                    outputs.append(torch.cat([means, variances], axis=1))
-                return outputs
-            else:
-                means, variances = torch.split(output, output.shape[1] // 2, dim=1)
-                variances = self.softplus(variances)
-                output = torch.cat([means, variances], axis=1)
-        if self.loss_function == "evidential":
-            if self.is_atom_bond_targets:
-                outputs = []
-                for x in output:
-                    means, lambdas, alphas, betas = torch.split(
-                        x, x.shape[1] // 4, dim=1
-                    )
-                    lambdas = self.softplus(lambdas)  # + min_val
-                    alphas = (
-                        self.softplus(alphas) + 1
-                    )  # + min_val # add 1 for numerical contraints of Gamma function
-                    betas = self.softplus(betas)  # + min_val
-                    outputs.append(torch.cat([means, lambdas, alphas, betas], dim=1))
-                return outputs
-            else:
-                means, lambdas, alphas, betas = torch.split(
-                    output, output.shape[1] // 4, dim=1
-                )
-                lambdas = self.softplus(lambdas)  # + min_val
-                alphas = (
-                    self.softplus(alphas) + 1
-                )  # + min_val # add 1 for numerical contraints of Gamma function
-                betas = self.softplus(betas)  # + min_val
-                output = torch.cat([means, lambdas, alphas, betas], dim=1)
-        if self.loss_function == "dirichlet":
-            if self.is_atom_bond_targets:
-                outputs = []
-                for x in output:
-                    outputs.append(nn.functional.softplus(x) + 1)
-                return outputs
-            else:
-                output = nn.functional.softplus(output) + 1
 
         return output
