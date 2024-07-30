@@ -11,7 +11,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from .vp import forward_vp
-from .vle import forward_vle
+from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl
 
 
 class MoleculeModel(nn.Module):
@@ -293,13 +293,22 @@ class MoleculeModel(nn.Module):
             log10p2sat = None
 
         # VLE models
-        if self.vle is not None:
-            output = forward_vle(
-                vle=self.vle,
+        if self.vle == "basic":
+            output = forward_vle_basic(output)
+        elif self.vle == "activity":
+            output = forward_vle_activity(
+                output=output,
+                fugacity_balance=self.fugacity_balance,
+                x_1=x_1,
+                x_2=x_2,
+                log10p1sat=log10p1sat,
+                log10p2sat=log10p2sat,
+            )
+        elif self.vle == "wohl":
+            output = forward_vle_wohl(
                 output=output,
                 wohl_order=self.wohl_order,
                 fugacity_balance=self.fugacity_balance,
-                temperature=output_temperature_batch,
                 x_1=x_1,
                 x_2=x_2,
                 q_1=q_1,
