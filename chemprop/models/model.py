@@ -10,6 +10,8 @@ from .ffn import build_ffn
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
+from .vp import forward_vp
+from .vle import forward_vle
 
 
 class MoleculeModel(nn.Module):
@@ -136,30 +138,6 @@ class MoleculeModel(nn.Module):
                 spectra_activation=args.spectra_activation,
             )
 
-    def forward_vp(
-            self,
-            output: torch.Tensor,
-            temperature_batch: torch.Tensor,
-    ):
-        """
-        Calculates the vapor pressure within the forward function
-        """
-        if self.vp == "basic":
-            output = output
-        if self.vp == "two_var":
-            antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
-            output = antoine_a + (antoine_b / temperature_batch)
-        if self.vp == "antoine":
-            antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
-            output = antoine_a - (antoine_b / (antoine_c + temperature_batch))
-        if self.vp == "four_var":
-            antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
-            output = antoine_a + (antoine_b / temperature_batch) + (antoine_c * torch.log(temperature_batch)) + (antoine_d * torch.pow(temperature_batch, 6))
-        if self.vp == "five_var":
-            antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
-            output = antoine_a + (antoine_b / temperature_batch) + (antoine_c * torch.log(temperature_batch)) + (antoine_d * torch.pow(temperature_batch, antoine_e))
-        return output
-
     def fingerprint(
         self,
         batch: Union[
@@ -250,20 +228,28 @@ class MoleculeModel(nn.Module):
         if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
-        # get temperature for use in parameterized equations
+        # get temperature and x for use in parameterized equations
         features_batch = torch.from_numpy(np.array(features_batch, dtype=np.float64)).float().to(self.device)
         if self.vle == "basic":
             output_temperature_batch = hybrid_model_features_batch[:,[2]]
             input_temperature_batch = features_batch[:,[2]]
+            x_1 = hybrid_model_features_batch[:,[0]]
+            x_2 = hybrid_model_features_batch[:,[1]]
         elif self.vle is not None:
             output_temperature_batch = hybrid_model_features_batch[:,[2]]
             input_temperature_batch = features_batch[:,[0]]
+            x_1 = hybrid_model_features_batch[:,[0]]
+            x_2 = hybrid_model_features_batch[:,[1]]
         elif self.vp is not None:
             output_temperature_batch = hybrid_model_features_batch[:,[0]]
             input_temperature_batch = features_batch[:,[0]]
+            x_1 = None
+            x_2 = None
         else:
             output_temperature_batch = None            
             input_temperature_batch = None
+            x_1 = None
+            x_2 = None
 
         if self.noisy_temperature is not None and self.training:
             # noise is applied to the features temperature not the temperature batch
@@ -286,132 +272,44 @@ class MoleculeModel(nn.Module):
             encoding_1 = torch.concatenate([encoding_1, input_temperature_batch], axis=1) # include T feature at the end
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
             encoding_2 = torch.concatenate([encoding_2, input_temperature_batch], axis=1) # include T feature at the end
-            if self.vle == "wohl":
-                q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
-                q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
-            if self.fugacity_balance == "intrinsic_vp":
-                vp1_output = self.intrinsic_vp(encoding_1)
-                vp2_output = self.intrinsic_vp(encoding_2)
-                log10p1sat = self.forward_vp(vp1_output, input_temperature_batch)
-                log10p2sat = self.forward_vp(vp2_output, input_temperature_batch)
 
-        # Apply post-processing for VLE models
+        if self.vle == "wohl":
+            q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
+            q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+
+        if self.fugacity_balance == "intrinsic_vp":
+            vp1_output = self.intrinsic_vp(encoding_1)
+            vp2_output = self.intrinsic_vp(encoding_2)
+            log10p1sat = forward_vp(self.vp, vp1_output, input_temperature_batch)
+            log10p2sat = forward_vp(self.vp, vp2_output, input_temperature_batch)
+        elif self.fugacity_balance == "tabulated_vp":
+            log10p1sat = hybrid_model_features_batch[:,[3]]
+            log10p2sat = hybrid_model_features_batch[:,[4]]
+        elif self.vle is not None:
+            log10p1sat = hybrid_model_features_batch[:,[3]]
+            log10p2sat = hybrid_model_features_batch[:,[4]]
+        else:
+            log10p1sat = None
+            log10p2sat = None
+
+        # VLE models
         if self.vle is not None:
-            if self.vle == "basic":
-                logity_1, log10P = torch.chunk(output, 2, dim=1)
-                y_1 = self.sigmoid(logity_1)
-                y_2 = 1 - y_1
-                output = torch.cat([y_1, y_2, log10P], axis=1)
-            else:  # vle in ["activity", "wohl"] # x1 x2 T P1sat P2sat
-                x_1 = hybrid_model_features_batch[:,[0]]
-                x_2 = hybrid_model_features_batch[:,[1]]
-                if self.fugacity_balance != "intrinsic_vp":
-                    log10p1sat = hybrid_model_features_batch[:,[3]]
-                    log10p2sat = hybrid_model_features_batch[:,[4]]
-                if self.vle == "activity":
-                    gamma_1 = torch.exp(output[:,[0]])
-                    gamma_2 = torch.exp(output[:,[1]])
-                else: #vle == "wohl"
-                    if self.wohl_order == 3:
-                        a12, a112, a122 = torch.chunk(output, 3, dim=1)
-                    elif self.wohl_order == 4:
-                        a12, a112, a122, a1112, a1222, a1122 = torch.chunk(output, 6, dim=1)
-                    elif self.wohl_order == 5:
-                        a12, a112, a122, a1112, a1222, a1122, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
-                    
-                    #volume fractions Zi
-                    z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
-                    z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
-                    if self.wohl_order == 3:
-                        gamma_1 = torch.exp(
-                            2 * a12 * z_2**2 * q_1 +
-                            6 * a112 * z_1 * z_2**2 * q_1 -
-                            3 * a122 * z_1 * z_2**2 * q_1 +
-                            3 * a122 * z_2**3 * q_1
-                        )
-                        gamma_2 = torch.exp(
-                            2 * a12 * z_1**2 * q_2 +
-                            3 * a112 * z_1**3 * q_2 -
-                            3 * a112 * z_1**2 * z_2 * q_2 +
-                            6 * a122 * z_1**2 * z_2 * q_2
-                        )
-                    elif self.wohl_order == 4:
-                        gamma_1 = torch.exp(
-                            2 * a12 * z_2**2 * q_1 +
-                            6 * a112 * z_1 * z_2**2 * q_1 -
-                            3 * a122 * z_1 * z_2**2 * q_1 +
-                            3 * a122 * z_2**3 * q_1 +
-                            12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
-                            4 * a1222 * q_1 * z_2**4 -
-                            8 * a1222 * z_1 * q_1 * z_2**3 +
-                            12 * a1122 * z_1 * q_1 * z_2**3 -
-                            6 * a1122 * z_1**2 * q_1 * z_2**2
-                        )
-                        gamma_2 = torch.exp(
-                            2 * a12 * z_1**2 * q_2 +
-                            3 * a112 * z_1**3 * q_2 -
-                            3 * a112 * z_1**2 * z_2 * q_2 +
-                            6 * a122 * z_1**2 * z_2 * q_2 +
-                            4 * a1112 * z_1**4 * q_2 -
-                            8 * a1112 * z_1**3 * z_2 * q_2 +
-                            12 * a1122 * z_1**2 * z_2**2 * q_2 +
-                            12 * a1222 * z_1**3 * z_2 * q_2 -
-                            6 * a1222 * z_1**2 * z_2**2 * q_2
-                        )
+            output = forward_vle(
+                vle=self.vle,
+                output=output,
+                wohl_order=self.wohl_order,
+                fugacity_balance=self.fugacity_balance,
+                temperature=output_temperature_batch,
+                x_1=x_1,
+                x_2=x_2,
+                q_1=q_1,
+                q_2=q_2,
+                log10p1sat=log10p1sat,
+                log10p2sat=log10p2sat,
+            )
 
-                    elif self.wohl_order == 5:
-                        gamma_1 = torch.exp(
-                            2 * a12 * z_2**2 * q_1 +
-                            6 * a112 * z_1 * z_2**2 * q_1 -
-                            3 * a122 * z_1 * z_2**2 * q_1 +
-                            3 * a122 * z_2**3 * q_1 +
-                            12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
-                            4 * a1222 * q_1 * z_2**4 -
-                            8 * a1222 * z_1 * q_1 * z_2**3 +
-                            12 * a1122 * z_1 * q_1 * z_2**3 -
-                            6 * a1122 * z_1**2 * q_1 * z_2**2 +
-                            20 * a11112 * z_1**3 * q_1 * z_2**2 +
-                            30 * a11122 * z_1**2 * q_1 * z_2**3 -
-                            10 * a11122 * z_1**3 * q_1 * z_2**2 +
-                            20 * a11222 * z_1 * q_1 * z_2**4 -
-                            20 * a11222 * z_1**2 * q_1 * z_2**3 +
-                            5 * a12222 * q_1 * z_2**5 -
-                            15 * a12222 * z_1 * q_1 * z_2**4
-                        )
-                        gamma_2 = torch.exp(
-                            2 * a12 * z_1**2 * q_2 +
-                            3 * a112 * z_1**3 * q_2 -
-                            3 * a112 * z_1**2 * z_2 * q_2 +
-                            6 * a122 * z_1**2 * z_2 * q_2 +
-                            4 * a1112 * z_1**4 * q_2 -
-                            8 * a1112 * z_1**3 * z_2 * q_2 +
-                            12 * a1122 * z_1**2 * z_2**2 * q_2 +
-                            12 * a1222 * z_1**3 * z_2 * q_2 -
-                            6 * a1222 * z_1**2 * z_2**2 * q_2 +
-                            5 * a11112 * z_1**5 * q_2 -
-                            15 * a11112 * z_1**4 * z_2 * q_2 +
-                            10 * a11122 * z_1**4 * z_2 * q_2 -
-                            10 * a11122 * z_1**3 * z_2**2 * q_2 +
-                            30 * a11222 * z_1**2 * z_2**3 * q_2 -
-                            10 * a11222 * z_1**3 * z_2**2 * q_2 +
-                            20 * a12222 * z_1**2 * z_2**3 * q_2
-                        )
-                    
-                    gamma_1_inf = torch.exp(2*a12*q_1 + 3*a122*q_1)
-                if self.fugacity_balance is None:
-                    p1sat = 10**log10p1sat
-                    p2sat = 10**log10p2sat
-                    P1 = p1sat * x_1 * gamma_1
-                    P2 = p2sat * x_2 * gamma_2
-                    P = P1 + P2
-                    y_1 = P1 / P
-                    y_2 = P2 / P
-                    log10P = torch.log10(P)
-                    output = torch.cat([y_1, y_2, log10P], axis=1)
-                else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
-                        output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
         # VP
         if self.vp is not None and self.fugacity_balance is None:
-            output = self.forward_vp(output, output_temperature_batch)
+            output = forward_vp(self.vp, output, output_temperature_batch)
 
         return output
