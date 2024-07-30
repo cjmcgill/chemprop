@@ -645,13 +645,6 @@ class TrainArgs(CommonArgs):
             self.mpn_shared = True
             self.number_of_molecules = 2
 
-        # Set number of wohl parameters based on order
-        if self.vle == "wohl":
-            wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
-            self.wohl_params = wohl_number_parameters_dict[self.wohl_order]
-        else:
-            self.wohl_params = None
-
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:
             raise ValueError('In reaction_solvent mode, --number_of_molecules 2 must be specified.')

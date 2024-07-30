@@ -37,40 +37,19 @@ class MoleculeModel(nn.Module):
         self.sigmoid = nn.functional.sigmoid
         self.softplus = nn.functional.softplus
 
-        self.relative_output_size = 1
+        self.output_size = args.num_tasks
 
-        if self.fugacity_balance is not None:
-            if self.vle == "activity":
-                self.relative_output_size *= 2/4
-            elif self.vle == "wohl":
-                if args.wohl_order == 3:
-                    self.relative_output_size *= args.wohl_params / 4 #3 parameter for 3rd-order Wohl model
-                elif args.wohl_order == 4:
-                    self.relative_output_size *= args.wohl_params / 4 #6 parameter for 6th-order Wohl model
-                elif args.wohl_order == 5:
-                    self.relative_output_size *= args.wohl_params / 4 #10 parameter for 9th-order wohl model
-                
-        elif self.vle == "basic":
-            self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
-        elif self.vle == "activity":
-            self.relative_output_size *= 2/3 # uses two activity parameters internally and returns three results
+        if self.vp is not None:
+            vp_number_parameters_dict = {"basic": 0, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
+            self.vp_output_size = vp_number_parameters_dict[self.vp]
+            if self.vle is None:
+                self.output_size = self.vp_output_size
+
+        if self.vle == "activity":
+            self.output_size = 2
         elif self.vle == "wohl":
-            if args.wohl_order == 3:
-                self.relative_output_size *= args.wohl_params / 3 #uses three function parameters internally and returns three results
-            elif args.wohl_order == 4:
-                self.relative_output_size *= args.wohl_params / 3 #for 6th order Wohl
-            elif args.wohl_order == 5:
-                self.relative_output_size *= args.wohl_params / 3 #for 9th order wohl
-        elif self.vp == 'basic':
-            self.relative_output_size *= 1 # predicts vp directly
-        elif self.vp == 'two_var':
-            self.relative_output_size *= 2 # uses two antoine parameters internally and returns one result
-        elif self.vp == "antoine":
-            self.relative_output_size *= 3 # uses three antoine parameters internally and returns one result
-        elif self.vp == "four_var":
-            self.relative_output_size *= 4 # uses four antoine parameters internally and returns one result
-        elif self.vp == "five_var":
-            self.relative_output_size *= 5 # uses five antoine parameters internally and returns one result
+            wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
+            self.output_size = wohl_number_parameters_dict[self.wohl_order]
 
         self.create_encoder(args)
         self.create_ffn(args)
@@ -108,7 +87,7 @@ class MoleculeModel(nn.Module):
             first_linear_dim=first_linear_dim,
             hidden_size=args.ffn_hidden_size,
             num_layers=args.ffn_num_layers,
-            output_size=int(np.rint(self.relative_output_size * args.num_tasks)),
+            output_size=self.output_size,
             dropout=args.dropout,
             activation=args.activation,
             dataset_type=args.dataset_type,
@@ -125,13 +104,12 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-        vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
         if self.fugacity_balance == "intrinsic_vp":
             self.intrinsic_vp = build_ffn(
                 first_linear_dim=self.hidden_size + 1, # +1 for temperature only
                 hidden_size=args.ffn_hidden_size,
                 num_layers=args.ffn_num_layers,
-                output_size=vp_output_size_dict[args.vp],
+                output_size=self.vp_output_size,
                 dropout=args.dropout,
                 activation=args.activation,
                 dataset_type=args.dataset_type,
