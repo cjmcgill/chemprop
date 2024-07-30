@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from .mpn import MPN
-from .ffn import build_ffn, MultiReadout
+from .ffn import build_ffn
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
@@ -251,7 +251,7 @@ class MoleculeModel(nn.Module):
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
         # get temperature for use in parameterized equations
-        features_batch = np.array(features_batch)
+        features_batch = torch.from_numpy(np.array(features_batch, dtype=np.float64)).float().to(self.device)
         if self.vle == "basic":
             output_temperature_batch = hybrid_model_features_batch[:,[2]]
             input_temperature_batch = features_batch[:,[2]]

@@ -21,7 +21,6 @@ from chemprop.args import PredictArgs, TrainArgs, FingerprintArgs
 from chemprop.data import StandardScaler, AtomBondScaler, MoleculeDataset, preprocess_smiles_columns, get_task_names
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import NoamLR
-from chemprop.models.ffn import MultiReadout
 
 
 def makedirs(path: str, isfile: bool = False) -> None:
@@ -251,28 +250,6 @@ def load_frzn_model(
                     [f"readout.{i*3+1}.weight", f"readout.{i*3+1}.bias"]
                     for i in range(current_args.frzn_ffn_layers)
                 ]
-            elif isinstance(model.readout, MultiReadout):  # Atomic/bond properties
-                if model.readout.shared_ffn:
-                    ffn_param_names = [
-                        [f"readout.atom_ffn_base.0.{i*3+1}.weight", f"readout.atom_ffn_base.0.{i*3+1}.bias",
-                        f"readout.bond_ffn_base.0.{i*3+1}.weight", f"readout.bond_ffn_base.0.{i*3+1}.bias"]
-                        for i in range(current_args.frzn_ffn_layers)
-                    ]
-                else:
-                    ffn_param_names = []
-                    nmodels = len(model.readout.ffn_list)
-                    for i in range(nmodels):
-                        readout = model.readout.ffn_list[i]
-                        if readout.constraint:
-                            ffn_param_names.extend([
-                                [f"readout.ffn_list.{i}.ffn.0.{j*3+1}.weight", f"readout.ffn_list.{i}.ffn.0.{j*3+1}.bias"]
-                                for j in range(current_args.frzn_ffn_layers)
-                            ])
-                        else:
-                            ffn_param_names.extend([
-                                [f"readout.ffn_list.{i}.ffn_readout.{j*3+1}.weight", f"readout.ffn_list.{i}.ffn_readout.{j*3+1}.bias"]
-                                for j in range(current_args.frzn_ffn_layers)
-                            ])
             ffn_param_names = [item for sublist in ffn_param_names for item in sublist]
 
             # Freeze MPNN and FFN layers
