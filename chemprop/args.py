@@ -501,7 +501,7 @@ class TrainArgs(CommonArgs):
     Default (False) is to use the checkpoint to freeze all encoders.
     (only relevant for number_of_molecules > 1, where checkpoint model has number_of_molecules = 1)
     """
-    vp: Literal['basic','antoine', 'four_var', 'five_var'] = None
+    vp: Literal['basic','antoine', 'four_var', 'five_var', 'simplified', 'ambrose4', 'ambrose5', 'riedel4', 'riedel5'] = None
     """The functional form to use for vapor pressure prediction."""
     noisy_temperature: float = None
     """Whether to use a noise factor to smooth the prediction of vapor pressure parameters."""
