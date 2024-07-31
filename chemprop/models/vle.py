@@ -18,7 +18,7 @@ def forward_vle_basic(
 
 def forward_vle_activity(
         output: torch.Tensor,
-        fugacity_balance: str,
+        fugacity_balance: bool,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         log10p1sat: torch.Tensor,
@@ -29,7 +29,7 @@ def forward_vle_activity(
     """
     gamma_1 = torch.exp(output[:,[0]])
     gamma_2 = torch.exp(output[:,[1]])
-    if fugacity_balance is None:
+    if not fugacity_balance:
         p1sat = 10**log10p1sat
         p2sat = 10**log10p2sat
         P1 = p1sat * x_1 * gamma_1
@@ -39,7 +39,7 @@ def forward_vle_activity(
         y_2 = P2 / P
         log10P = torch.log10(P)
         output = torch.cat([y_1, y_2, log10P], axis=1)
-    else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
+    else:
         output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
     return output
 
@@ -47,7 +47,7 @@ def forward_vle_activity(
 def forward_vle_wohl(
         output: torch.Tensor,
         wohl_order: int,
-        fugacity_balance: str,
+        fugacity_balance: bool,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         q_1: torch.Tensor,
@@ -139,7 +139,7 @@ def forward_vle_wohl(
     else:
         raise NotImplementedError(f"Wohl order {wohl_order} not supported")
 
-    if fugacity_balance is None:
+    if not fugacity_balance:
         p1sat = 10**log10p1sat
         p2sat = 10**log10p2sat
         P1 = p1sat * x_1 * gamma_1
@@ -149,7 +149,7 @@ def forward_vle_wohl(
         y_2 = P2 / P
         log10P = torch.log10(P)
         output = torch.cat([y_1, y_2, log10P], axis=1)
-    else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
+    else:
         output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
 
     return output

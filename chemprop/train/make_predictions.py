@@ -292,7 +292,7 @@ def predict_and_save(
                 unc_names = [estimator.label]
             else:
                 unc_names = [name + f"_{estimator.label}" for name in task_names]
-            if train_args.fugacity_balance is not None:
+            if train_args.fugacity_balance:
                 task_names = ["gamma_1", "gamma_2", "log10P1sat", "log10P2sat"]
 
             for pred_name, unc_name, pred, un in zip(

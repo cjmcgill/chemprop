@@ -529,7 +529,7 @@ def get_data(path: str,
         original_features = all_features # before VLE/VP modification
 
         # Make hybrid_model_features for VLE
-        if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
+        if args.fugacity_balance: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
             if [] not in all_targets:
                 all_hybrid_model_features = np.concatenate(
                     [np.array(all_features), np.array(all_targets, dtype=np.float64)], # intrinsic vp prediction still takes in log10Psat but won't use it
@@ -548,14 +548,7 @@ def get_data(path: str,
             all_hybrid_model_features = None
 
         # Modify features for VLE
-        if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 P g1inf
-            if args.vle == "wohl": # reduction for both intrinsic and tabulated vp
-                all_features = np.array(all_features)[:, [2]].tolist() # T only
-            elif args.vle == "activity":
-                all_features = np.array(all_features)[:, :3].tolist() # x1, x2, T
-            elif args.vle == "basic": # this may not be the best place to call this error
-                raise ValueError("VLE model 'basic' is not supported for fugacity balance.")
-        elif args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
+        if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
             if args.vle == "basic":
                 pass # all_features = [x1, x2, T, log10P1sat, log10P2sat]
             if args.vle == "activity":

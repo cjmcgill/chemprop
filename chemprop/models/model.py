@@ -31,6 +31,7 @@ class MoleculeModel(nn.Module):
         self.vle = args.vle
         self.wohl_order = args.wohl_order
         self.fugacity_balance = args.fugacity_balance
+        self.intrinsic_vp = args.intrinsic_vp
         self.device = args.device
         self.hidden_size = args.hidden_size
         self.noisy_temperature = args.noisy_temperature
@@ -104,7 +105,7 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-        if self.fugacity_balance == "intrinsic_vp":
+        if self.intrinsic_vp:
             self.intrinsic_vp = build_ffn(
                 first_linear_dim=self.hidden_size + 1, # +1 for temperature only
                 hidden_size=args.ffn_hidden_size,
@@ -245,7 +246,7 @@ class MoleculeModel(nn.Module):
         output = self.readout(encodings)
 
         # Extra outputs for VLE models
-        if self.vle == "wohl" or self.fugacity_balance == "intrinsic_vp":
+        if self.vle == "wohl" or self.intrinsic_vp:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
             encoding_1 = torch.concatenate([encoding_1, input_temperature_batch], axis=1) # include T feature at the end
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
@@ -255,14 +256,11 @@ class MoleculeModel(nn.Module):
             q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
             q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
 
-        if self.fugacity_balance == "intrinsic_vp":
+        if self.intrinsic_vp:
             vp1_output = self.intrinsic_vp(encoding_1)
             vp2_output = self.intrinsic_vp(encoding_2)
             log10p1sat = forward_vp(self.vp, vp1_output, input_temperature_batch)
             log10p2sat = forward_vp(self.vp, vp2_output, input_temperature_batch)
-        elif self.fugacity_balance == "tabulated_vp":
-            log10p1sat = hybrid_model_features_batch[:,[3]]
-            log10p2sat = hybrid_model_features_batch[:,[4]]
         elif self.vle is not None:
             log10p1sat = hybrid_model_features_batch[:,[3]]
             log10p2sat = hybrid_model_features_batch[:,[4]]
@@ -296,7 +294,7 @@ class MoleculeModel(nn.Module):
             )
 
         # VP
-        if self.vp is not None and self.fugacity_balance is None:
+        if self.vp is not None and self.vle is None:
             output = forward_vp(self.vp, output, output_temperature_batch)
 
         return output

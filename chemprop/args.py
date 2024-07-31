@@ -502,14 +502,14 @@ class TrainArgs(CommonArgs):
     (only relevant for number_of_molecules > 1, where checkpoint model has number_of_molecules = 1)
     """
     vp: Literal['basic','antoine', 'four_var', 'five_var', 'simplified', 'ambrose4', 'ambrose5', 'riedel4', 'riedel5'] = None
-    """The functional form to use for vapor pressure prediction."""
+    """The functional form to use for vapor pressure prediction. If specified and vle is specified, will use intrinsic vapor pressure prediction."""
     noisy_temperature: float = None
     """Whether to use a noise factor to smooth the prediction of vapor pressure parameters."""
     vle: Literal["basic", "activity", "wohl"] = None
-    """Which VLE model to use."""
+    """Which VLE model to use. Will use tabulated vapor pressures unless a vp option is also specified, then will use intrinsic vapor pressure prediction."""
     wohl_order: Literal[3,4,5] = 3  # default to 3rd-order Wohl
     """The highest interaction order to be considered in a Wohl VLE model"""
-    fugacity_balance: Literal['intrinsic_vp', 'tabulated_vp'] = None
+    fugacity_balance: bool = False
     """Whether to use an activity prediction based on the squared difference of ln fugacity between the liquid and vapor phases."""
 
 
@@ -644,6 +644,9 @@ class TrainArgs(CommonArgs):
         if self.vle is not None:
             self.mpn_shared = True
             self.number_of_molecules = 2
+        if self.vle == "basic" and self.fugacity_balance:
+            raise ValueError("Cannot use fugacity balance with basic VLE model.")
+        self.intrinsic_vp = self.vp is not None and self.vle is not None # boolean
 
         # Adapt the number of molecules for reaction_solvent mode
         if self.reaction_solvent is True and self.number_of_molecules != 2:

@@ -71,7 +71,7 @@ def train(
         constraints_batch = None
         bond_types_batch = None
         
-        if args.fugacity_balance is not None:
+        if args.fugacity_balance:
             hybrid_model_features_batch = torch.tensor(np.array(hybrid_model_features_batch)) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
             x1_not_zero = hybrid_model_features_batch[:,[0]] != 0
             x2_not_zero = hybrid_model_features_batch[:,[1]] != 0
@@ -102,7 +102,7 @@ def train(
         targets = targets.to(torch_device)
         target_weights = target_weights.to(torch_device)
         data_weights = data_weights.to(torch_device)
-        if hybrid_model_features_batch is not None and args.fugacity_balance is not None:
+        if hybrid_model_features_batch is not None and args.fugacity_balance:
             hybrid_model_features_batch = hybrid_model_features_batch.to(torch_device)
 
         # Calculate losses

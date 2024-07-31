@@ -76,7 +76,7 @@ def predict(
         batch_preds = batch_preds.data.cpu().numpy()
 
         # Inverse scale if regression
-        if model.fugacity_balance is not None: # don't unscale gammas, do unscale log10p1sat and log10p2sat
+        if model.fugacity_balance: # don't unscale gammas, do unscale log10p1sat and log10p2sat
             batch_preds[:,[2,3]] = batch_preds[:,[2,3]] * scaler.stds[2] + scaler.means[2]
         elif scaler is not None:
             batch_preds = scaler.inverse_transform(batch_preds)

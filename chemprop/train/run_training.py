@@ -163,7 +163,7 @@ def run_training(args: TrainArgs,
     if args.dataset_type == 'regression':
         debug('Fitting scaler')
         # scale targets
-        if args.fugacity_balance is not None: # no scaling for y1, y2, g1_inf
+        if args.fugacity_balance: # no scaling for y1, y2, g1_inf
             unscaled_target_indices = [0,1,3]
         elif args.vle is not None:
             unscaled_target_indices = [0,1]
@@ -171,7 +171,7 @@ def run_training(args: TrainArgs,
             unscaled_target_indices = None
         scaler = train_data.normalize_targets(unscaled_target_indices)
         # hybrid model features scaling
-        if args.fugacity_balance is not None: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
+        if args.fugacity_balance: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
             hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                 target_scaler=scaler,
                 matched_hybrid_model_features_indices=[3,4,7], # scales P1sat and P2sat the same as P target
