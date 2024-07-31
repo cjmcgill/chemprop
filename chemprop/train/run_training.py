@@ -124,6 +124,12 @@ def run_training(args: TrainArgs,
             smiles_columns=args.smiles_columns,
             logger=logger,
         )
+    
+    # Set whether VLE mode has an infinite dilution target or not
+    if args.vle is not None and args.num_tasks == 4:
+        args.vle_inf_dilution = True
+    else:
+        args.vle_inf_dilution = False
 
     if args.features_scaling:
         if args.vle in ["basic", "activity"]: # no scaling for x1 and x2. Other vle don't have x1 and x2 in regular features, just in hybrid features.
@@ -163,32 +169,28 @@ def run_training(args: TrainArgs,
     if args.dataset_type == 'regression':
         debug('Fitting scaler')
         # scale targets
-        if args.fugacity_balance: # no scaling for y1, y2, g1_inf
+        if args.vle_inf_dilution and args.vle != "basic": # no scaling for y1, y2, g1_inf
+            # this will result in upweighting of g1_inf for non-fugacity balance models
             unscaled_target_indices = [0,1,3]
-        elif args.vle is not None:
+        elif args.vle is not None: # no scaling for y1, y2. Either no g1_inf or "basic" vle and g1_inf is scaled
             unscaled_target_indices = [0,1]
         else:
             unscaled_target_indices = None
+
         scaler = train_data.normalize_targets(unscaled_target_indices)
+
         # hybrid model features scaling
-        if args.fugacity_balance: # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
-            hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
-                target_scaler=scaler,
-                matched_hybrid_model_features_indices=[3,4,7], # scales P1sat and P2sat the same as P target
-                corresponding_target_indices=[2,2,2],
-                scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
-            )
-        elif args.vle is not None and args.vle != "basic":
+        if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
             hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                 target_scaler=scaler,
                 matched_hybrid_model_features_indices=[3,4], # scales P1sat and P2sat the same as P target
                 corresponding_target_indices=[2,2],
-                scale_only_indices=[2], # scales down magnitude of T without offsetting it, no negative T
+                no_offset_indices=[2], # scales down magnitude of T without offsetting it, no negative T
             )
-        elif args.vp is not None:
+        elif args.vp is not None: # T
             hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                 target_scaler=scaler,
-                scale_only_indices=[0],
+                no_offset_indices=[0],
             )
         else:
             hybrid_model_features_scaler = None
@@ -209,6 +211,8 @@ def run_training(args: TrainArgs,
     # Set up test set evaluation
     test_smiles, test_targets = test_data.smiles(), test_data.targets()
     sum_test_preds = np.zeros((len(test_smiles), args.num_tasks))
+    if args.vle is not None and args.vle != "basic":
+        sum_test_preds = np.zeros((len(test_smiles), 7))
 
     # Automatically determine whether to cache
     if len(data) <= args.cache_cutoff:
@@ -306,7 +310,10 @@ def run_training(args: TrainArgs,
                 dataset_type=args.dataset_type,
                 scaler=scaler,
                 atom_bond_scaler=atom_bond_scaler,
-                logger=logger
+                logger=logger,
+                vle=args.vle,
+                vp=args.vp,
+                vle_inf_dilution=args.vle_inf_dilution,
             )
 
             for metric, scores in val_scores.items():

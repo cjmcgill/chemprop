@@ -529,18 +529,7 @@ def get_data(path: str,
         original_features = all_features # before VLE/VP modification
 
         # Make hybrid_model_features for VLE
-        if args.fugacity_balance: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 log10P g1inf
-            if [] not in all_targets:
-                all_hybrid_model_features = np.concatenate(
-                    [np.array(all_features), np.array(all_targets, dtype=np.float64)], # intrinsic vp prediction still takes in log10Psat but won't use it
-                    axis=1,
-                ) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P, g1inf
-            else: # for prediction
-                all_hybrid_model_features = np.concatenate(
-                    [np.array(all_features), np.zeros((len(all_features), 4))],
-                    axis=1,
-                )
-        elif args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
+        if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
             all_hybrid_model_features = all_features # x1, x2, T, log10Psat1, log10Psat2
         elif args.vp is not None: # T, possibly other features
             all_hybrid_model_features = np.array(all_features)[:,[0]].tolist() # T only

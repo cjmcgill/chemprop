@@ -32,6 +32,7 @@ class MoleculeModel(nn.Module):
         self.wohl_order = args.wohl_order
         self.fugacity_balance = args.fugacity_balance
         self.intrinsic_vp = args.intrinsic_vp
+        self.vle_inf_dilution = args.vle_inf_dilution
         self.device = args.device
         self.hidden_size = args.hidden_size
         self.noisy_temperature = args.noisy_temperature
@@ -270,28 +271,48 @@ class MoleculeModel(nn.Module):
 
         # VLE models
         if self.vle == "basic":
-            output = forward_vle_basic(output)
-        elif self.vle == "activity":
-            output = forward_vle_activity(
-                output=output,
-                fugacity_balance=self.fugacity_balance,
-                x_1=x_1,
-                x_2=x_2,
-                log10p1sat=log10p1sat,
-                log10p2sat=log10p2sat,
-            )
-        elif self.vle == "wohl":
-            output = forward_vle_wohl(
-                output=output,
-                wohl_order=self.wohl_order,
-                fugacity_balance=self.fugacity_balance,
-                x_1=x_1,
-                x_2=x_2,
-                q_1=q_1,
-                q_2=q_2,
-                log10p1sat=log10p1sat,
-                log10p2sat=log10p2sat,
-            )
+            output = forward_vle_basic(output, self.vle_inf_dilution)
+        elif self.vle is not None:
+            if self.vle == "activity":
+                gamma_1, gamma_2 = forward_vle_activity(
+                    output=output,
+                )
+            elif self.vle == "wohl":
+                gamma_1, gamma_2 = forward_vle_wohl(
+                    output=output,
+                    wohl_order=self.wohl_order,
+                    x_1=x_1,
+                    x_2=x_2,
+                    q_1=q_1,
+                    q_2=q_2,
+                )
+            else:
+                raise ValueError(f"Unsupported VLE model {self.vle}.")
+            
+            if self.training and self.fugacity_balance:
+                output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
+            elif self.training:
+                p1sat = 10**log10p1sat
+                p2sat = 10**log10p2sat
+                P1 = p1sat * x_1 * gamma_1
+                P2 = p2sat * x_2 * gamma_2
+                P = P1 + P2
+                y_1 = P1 / P
+                y_2 = P2 / P
+                log10P = torch.log10(P)
+                output = torch.cat([y_1, y_2, log10P], axis=1)
+                if self.vle_inf_dilution:
+                    output = torch.cat([output, gamma_1], axis=1)
+            else: # not training
+                p1sat = 10**log10p1sat
+                p2sat = 10**log10p2sat
+                P1 = p1sat * x_1 * gamma_1
+                P2 = p2sat * x_2 * gamma_2
+                P = P1 + P2
+                y_1 = P1 / P
+                y_2 = P2 / P
+                log10P = torch.log10(P)
+                output = torch.cat([y_1, y_2, log10P, gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
 
         # VP
         if self.vp is not None and self.vle is None:

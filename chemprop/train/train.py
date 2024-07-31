@@ -60,7 +60,7 @@ def train(
 
         mask_batch = np.transpose(mask_batch).tolist()
         masks = torch.tensor(mask_batch, dtype=torch.bool)  # shape(batch, tasks)
-        targets = torch.tensor([[0 if x is None else x for x in tb] for tb in target_batch])  # shape(batch, tasks)
+        targets = torch.tensor([[np.nan if x is None else x for x in tb] for tb in target_batch])  # shape(batch, tasks)
 
         if args.target_weights is not None:
             target_weights = torch.tensor(args.target_weights).unsqueeze(0)  # shape(1,tasks)
@@ -71,16 +71,23 @@ def train(
         constraints_batch = None
         bond_types_batch = None
         
+        # make masks for fugacity balance
         if args.fugacity_balance:
-            hybrid_model_features_batch = torch.tensor(np.array(hybrid_model_features_batch)) # x1, x2, T, log10P1sat, log10P2sat, y1, y2, log10P and g1_inf
+            hybrid_model_features_batch = torch.tensor(np.array(hybrid_model_features_batch)) # x1, x2, T, log10P1sat, log10P2sat, if-fugacity-balance(y1, y2, log10P and g1_inf)
             x1_not_zero = hybrid_model_features_batch[:,[0]] != 0
             x2_not_zero = hybrid_model_features_batch[:,[1]] != 0
-            g1_inf_not_nan = ~torch.isnan(hybrid_model_features_batch[:,[-1]])
-            masks = torch.cat([
-                x1_not_zero,
-                x2_not_zero & ~g1_inf_not_nan,
-                g1_inf_not_nan,
-            ], dim=1).bool()
+            if args.vle_inf_dilution: # targets y1 y2 log10P g1_inf
+                g1_inf_not_nan = ~torch.isnan(targets[:,[-1]])
+                masks = torch.cat([
+                    x1_not_zero,
+                    x2_not_zero & ~g1_inf_not_nan,
+                    g1_inf_not_nan,
+                ], dim=1).bool()
+            else: # targets y1 y2 log10P
+                masks = torch.cat([
+                    x1_not_zero,
+                    x2_not_zero,
+                ], dim=1).bool()
 
         # Run model
         model.zero_grad()
@@ -107,11 +114,12 @@ def train(
 
         # Calculate losses
         if args.loss_function == "squared_log_fugacity_difference":
-            loss = loss_func(preds, hybrid_model_features_batch, masks) * data_weights
+            loss = loss_func(preds, targets, hybrid_model_features_batch, masks, args.vle_inf_dilution) * data_weights
             if loss.isnan().any():
                 raise ValueError("Loss contains NaNs")
         else:
-            loss = loss_func(preds, targets) * target_weights * data_weights * masks
+            loss = loss_func(preds, targets) * target_weights * data_weights
+            loss = torch.where(masks, loss, 0)
 
         loss = loss.sum() / masks.sum()
 

@@ -5,55 +5,42 @@ import numpy as np
 
 def forward_vle_basic(
         output: torch.Tensor,
+        vle_inf_dilution: bool,
 ):
     """
     vle output calculation for the basic vle model
     """
-    logity_1, log10P = torch.chunk(output, 2, dim=1)
-    y_1 = nn.functional.sigmoid(logity_1)
-    y_2 = 1 - y_1
-    output = torch.cat([y_1, y_2, log10P], axis=1)
+    if vle_inf_dilution:
+        y_1, log10P, gamma_inf_dilution = torch.chunk(output, 3, dim=1)
+        y_2 = 1 - y_1
+        output = torch.cat([y_1, y_2, log10P, gamma_inf_dilution], axis=1)
+    else:
+        logity_1, log10P = torch.chunk(output, 2, dim=1)
+        y_1 = nn.functional.sigmoid(logity_1)
+        y_2 = 1 - y_1
+        output = torch.cat([y_1, y_2, log10P], axis=1)
     return output
 
 
 def forward_vle_activity(
         output: torch.Tensor,
-        fugacity_balance: bool,
-        x_1: torch.Tensor,
-        x_2: torch.Tensor,
-        log10p1sat: torch.Tensor,
-        log10p2sat: torch.Tensor,
 ):
     """
     vle output calculation for the activity coefficient model
     """
     gamma_1 = torch.exp(output[:,[0]])
     gamma_2 = torch.exp(output[:,[1]])
-    if not fugacity_balance:
-        p1sat = 10**log10p1sat
-        p2sat = 10**log10p2sat
-        P1 = p1sat * x_1 * gamma_1
-        P2 = p2sat * x_2 * gamma_2
-        P = P1 + P2
-        y_1 = P1 / P
-        y_2 = P2 / P
-        log10P = torch.log10(P)
-        output = torch.cat([y_1, y_2, log10P], axis=1)
-    else:
-        output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
-    return output
+    output = torch.cat([gamma_1, gamma_2], axis=1)
+    return gamma_1, gamma_2
 
 
 def forward_vle_wohl(
         output: torch.Tensor,
         wohl_order: int,
-        fugacity_balance: bool,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         q_1: torch.Tensor,
         q_2: torch.Tensor,
-        log10p1sat: torch.Tensor,
-        log10p2sat: torch.Tensor,
 ):
     """
     """
@@ -139,17 +126,4 @@ def forward_vle_wohl(
     else:
         raise NotImplementedError(f"Wohl order {wohl_order} not supported")
 
-    if not fugacity_balance:
-        p1sat = 10**log10p1sat
-        p2sat = 10**log10p2sat
-        P1 = p1sat * x_1 * gamma_1
-        P2 = p2sat * x_2 * gamma_2
-        P = P1 + P2
-        y_1 = P1 / P
-        y_2 = P2 / P
-        log10P = torch.log10(P)
-        output = torch.cat([y_1, y_2, log10P], axis=1)
-    else:
-        output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
-
-    return output
+    return gamma_1, gamma_2

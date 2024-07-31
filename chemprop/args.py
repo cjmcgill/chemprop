@@ -515,10 +515,8 @@ class TrainArgs(CommonArgs):
 
     def __init__(self, *args, **kwargs) -> None:
         super(TrainArgs, self).__init__(*args, **kwargs)
-        self._task_names = None
+        self.task_names = None
         self._crossval_index_sets = None
-        self._task_names = None
-        self._num_tasks = None
         self._features_size = None
         self._train_data_size = None
 
@@ -546,15 +544,6 @@ class TrainArgs(CommonArgs):
     def crossval_index_sets(self) -> List[List[List[int]]]:
         """Index sets used for splitting data into train/validation/test during cross-validation"""
         return self._crossval_index_sets
-
-    @property
-    def task_names(self) -> List[str]:
-        """A list of names of the tasks being trained on."""
-        return self._task_names
-
-    @task_names.setter
-    def task_names(self, task_names: List[str]) -> None:
-        self._task_names = task_names
 
     @property
     def num_tasks(self) -> int:

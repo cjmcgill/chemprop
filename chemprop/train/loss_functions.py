@@ -372,8 +372,10 @@ def evidential_loss(pred_values, targets, lam: float = 0, epsilon: float = 1e-8,
 
 def squared_log_fugacity_difference(
         pred_values: torch.tensor,
+        targets: torch.tensor,
         hybrid_model_features: torch.tensor,
         masks: torch.tensor,
+        vle_inf_dilution: bool,
 ) -> torch.tensor:
     """
     Uses the square of the log fugacity difference between the vapor and liquid phases as a loss function.
@@ -384,15 +386,24 @@ def squared_log_fugacity_difference(
     """
 
     gamma_1, gamma_2, log10p1sat, log10p2sat = torch.chunk(pred_values, 4, dim=1)
-    x1, x2, T, _, _, y1, y2, log10P, gamma_1_inf = torch.chunk(hybrid_model_features, 9, dim=1) # ignore the log10psat, get from output instead
+    if vle_inf_dilution:
+        y1, y2, log10P, gamma_1_inf = torch.chunk(targets, 4, dim=1)
+        gamma_1_inf = torch.where(masks[:,[2]], gamma_1_inf, torch.ones_like(gamma_1_inf)) # mask in
+    else:
+        y1, y2, log10P = torch.chunk(targets, 3, dim=1)
+    x1 = hybrid_model_features[:,[0]]
+    x2 = hybrid_model_features[:,[1]]
+
     x1 = torch.where(masks[:,[0]], x1, torch.ones_like(x1)) # mask in
     x2 = torch.where(masks[:,[1]], x2, torch.ones_like(x2)) # mask in
     y1 = torch.where(masks[:,[0]], y1, torch.ones_like(y1)) # mask in
     y2 = torch.where(masks[:,[1]], y2, torch.ones_like(y2)) # mask in
-    gamma_1_inf = torch.where(masks[:,[2]], gamma_1_inf, torch.ones_like(gamma_1_inf)) # mask in
     loss_1 = (torch.log10(x1 * gamma_1 / y1) + log10p1sat - log10P) ** 2
     loss_2 = (torch.log10(x2 * gamma_2 / y2) + log10p2sat - log10P) ** 2
-    loss_inf = (torch.log10(gamma_1_inf / gamma_1)) ** 2
-    loss = torch.cat((loss_1, loss_2, loss_inf), dim=1)
+    if vle_inf_dilution:
+        loss_inf = (torch.log10(gamma_1_inf / gamma_1)) ** 2
+        loss = torch.cat([loss_1, loss_2, loss_inf], dim=1)
+    else:
+        loss = torch.cat([loss_1, loss_2], dim=1)
     loss = torch.where(masks, loss, torch.zeros_like(loss)) # mask out
     return loss

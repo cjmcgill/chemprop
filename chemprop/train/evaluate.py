@@ -19,7 +19,11 @@ def evaluate_predictions(preds: List[List[float]],
                          gt_targets: List[List[bool]] = None,
                          lt_targets: List[List[bool]] = None,
                          raw_hybrid_model_features: List[List[float]] = None,
-                         logger: logging.Logger = None) -> Dict[str, List[float]]:
+                         logger: logging.Logger = None,
+                         vle: str = None,
+                         vp: str = None,
+                         vle_inf_dilution: bool = False,
+                         ) -> Dict[str, List[float]]:
     """
     Evaluates predictions using a metric function after filtering out invalid targets.
 
@@ -50,26 +54,22 @@ def evaluate_predictions(preds: List[List[float]],
     valid_targets = [[] for _ in range(num_tasks)]
     valid_gt_targets = [[] for _ in range(num_tasks)]
     valid_lt_targets = [[] for _ in range(num_tasks)]
-    if dataset_type != 'spectra' or "squared_log_fugacity_difference" not in metrics:
+    if vle is not None and vle != "basic":
+        if vle_inf_dilution:
+            preds = np.array(preds)[:,[0,1,2,3]]
+        else:
+            preds = np.array(preds)[:,[0,1,2]]
         for i in range(num_tasks):
-            if is_atom_bond_targets:
-                for j in range(len(preds[i])):
-                    if targets[i][j][0] is not None:  # Skip those without targets
-                        valid_preds[i].append(list(preds[i][j]))
-                        valid_targets[i].append(list(targets[i][j]))
-                        if gt_targets is not None:
-                            valid_gt_targets[i].append(list(gt_targets[i][j]))
-                        if lt_targets is not None:
-                            valid_lt_targets[i].append(list(lt_targets[i][j]))
-            else:
-                for j in range(len(preds)):
-                    if targets[j][i] is not None:  # Skip those without targets
-                        valid_preds[i].append(preds[j][i])
-                        valid_targets[i].append(targets[j][i])
-                        if gt_targets is not None:
-                            valid_gt_targets[i].append(gt_targets[j][i])
-                        if lt_targets is not None:
-                            valid_lt_targets[i].append(lt_targets[j][i])
+            for j in range(len(preds)):
+                if targets[j][i] is not None:  # Skip those without targets
+                    valid_preds[i].append(preds[j][i])
+                    valid_targets[i].append(targets[j][i])
+    elif dataset_type != 'spectra' or "squared_log_fugacity_difference" not in metrics:
+        for i in range(num_tasks):
+            for j in range(len(preds)):
+                if targets[j][i] is not None:  # Skip those without targets
+                    valid_preds[i].append(preds[j][i])
+                    valid_targets[i].append(targets[j][i])
 
     # Compute metric. Spectra loss calculated for all tasks together, others calculated for tasks individually.
     results = defaultdict(list)
@@ -83,7 +83,7 @@ def evaluate_predictions(preds: List[List[float]],
     elif "squared_log_fugacity_difference" in metrics:
         for metric, metric_func in metric_to_func.items():
             if metric == "squared_log_fugacity_difference":
-                results[metric].append(metric_func(preds, raw_hybrid_model_features))
+                results[metric].append(metric_func(preds, targets, raw_hybrid_model_features, vle_inf_dilution))
     else:
         for i in range(num_tasks):
             # # Skip if all targets or preds are identical, otherwise we'll crash during classification
@@ -125,7 +125,11 @@ def evaluate(model: MoleculeModel,
              dataset_type: str,
              scaler: StandardScaler = None,
              atom_bond_scaler: AtomBondScaler = None,
-             logger: logging.Logger = None) -> Dict[str, List[float]]:
+             logger: logging.Logger = None,
+             vle: str = None,
+             vp: str = None,
+             vle_inf_dilution: bool = False,
+             ) -> Dict[str, List[float]]:
     """
     Evaluates an ensemble of models on a dataset by making predictions and then evaluating the predictions.
 
@@ -166,6 +170,7 @@ def evaluate(model: MoleculeModel,
         gt_targets=gt_targets,
         lt_targets=lt_targets,
         raw_hybrid_model_features=data_loader.raw_hybrid_model_features,
+
     )
 
     return results
