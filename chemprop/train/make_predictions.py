@@ -292,8 +292,6 @@ def predict_and_save(
                 unc_names = [estimator.label]
             else:
                 unc_names = [name + f"_{estimator.label}" for name in task_names]
-            if train_args.fugacity_balance:
-                task_names = ["gamma_1", "gamma_2", "log10P1sat", "log10P2sat"]
 
             for pred_name, unc_name, pred, un in zip(
                 task_names, unc_names, d_preds, d_unc
@@ -397,6 +395,12 @@ def make_predictions(
             num_tasks,
             task_names,
         ) = load_model(args, generator=True)
+    
+    if args.vle is not None and args.vle != "basic":
+        print(num_tasks, task_names)
+        task_names = ["y1","y2","log10P","gamma_1", "gamma_2", "log10P1sat", "log10P2sat"]
+        num_tasks = 7
+
 
     num_models = len(args.checkpoint_paths)
 

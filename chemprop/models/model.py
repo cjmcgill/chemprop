@@ -42,7 +42,8 @@ class MoleculeModel(nn.Module):
         self.output_size = args.num_tasks
 
         if self.vp is not None:
-            vp_number_parameters_dict = {"basic": 0, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
+            vp_number_parameters_dict = {"basic": 0, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5,
+                                         "ambrose4": 4, "ambrose5": 5, "riedel4": 4, "riedel5": 5}
             self.vp_output_size = vp_number_parameters_dict[self.vp]
             if self.vle is None:
                 self.output_size = self.vp_output_size
@@ -231,6 +232,16 @@ class MoleculeModel(nn.Module):
             x_1 = None
             x_2 = None
 
+        # get Tc and Pc
+        if self.vp in ["ambrose4", "ambrose5", "riedel4", "riedel5"] and self.vle is None:
+            Tc = hybrid_model_features_batch[:,[1]]
+            log10Pc = hybrid_model_features_batch[:,[2]]
+        elif self.vp in ["ambrose4", "ambrose5", "riedel4", "riedel5"] and self.vle is not None:
+            raise NotImplementedError("Ambrose and Riedel equations are not implemented for VLE models.")
+        else:
+            Tc = None
+            log10Pc = None
+
         if self.noisy_temperature is not None and self.training:
             # noise is applied to the features temperature not the temperature batch
             noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
@@ -316,6 +327,6 @@ class MoleculeModel(nn.Module):
 
         # VP
         if self.vp is not None and self.vle is None:
-            output = forward_vp(self.vp, output, output_temperature_batch)
+            output = forward_vp(self.vp, output, output_temperature_batch, Tc, log10Pc)
 
         return output

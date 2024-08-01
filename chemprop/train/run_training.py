@@ -187,6 +187,14 @@ def run_training(args: TrainArgs,
                 corresponding_target_indices=[2,2],
                 no_offset_indices=[2], # scales down magnitude of T without offsetting it, no negative T
             )
+        elif args.vp in ["ambrose4", "ambrose5", "riedel4", "riedel5"]:
+            hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
+                target_scaler=scaler,
+                matched_hybrid_model_features_indices=[2], # scale Pc like Psat
+                corresponding_target_indices=[0],
+                no_offset_indices=[0], # scales down magnitude of T without offsetting it, no negative T
+                matched_scaling_pairs=[(0,1)], # scale T like Tc
+            )
         elif args.vp is not None: # T
             hybrid_model_features_scaler = train_data.custom_normalize_hybrid_features(
                 target_scaler=scaler,
