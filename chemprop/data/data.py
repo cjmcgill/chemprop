@@ -780,7 +780,7 @@ class MoleculeDataset(Dataset):
         
         return scaler
 
-    def normalize_targets(self, unscaled_target_indices=None) -> StandardScaler:
+    def normalize_targets(self, unscaled_target_indices=[], offset_only_indices=[], no_offset_indices=[]) -> StandardScaler:
         """
         Normalizes the targets of the dataset using a :class:`~chemprop.data.StandardScaler`.
         The :class:`~chemprop.data.StandardScaler` subtracts the mean and divides by the standard deviation
@@ -788,13 +788,18 @@ class MoleculeDataset(Dataset):
         This should only be used for regression datasets.
         :return: A :class:`~chemprop.data.StandardScaler` fitted to the targets.
         """
-        targets = [d.raw_targets for d in self._data]
+        targets = np.array([d.raw_targets for d in self._data])
         scaler = StandardScaler().fit(targets)
-        if unscaled_target_indices is not None:
-            for i in unscaled_target_indices:
-                if i < len(scaler.means): # for fugacity balance if no infinite dilution targets
-                    scaler.means[i] = 0
-                    scaler.stds[i] = 1
+
+        for i in offset_only_indices:
+            scaler.means[i] = targets[:, i].mean()
+            scaler.stds[i] = 1
+        for i in no_offset_indices:
+            scaler.means[i] = 0
+            scaler.stds[i] = targets[:, i].mean()
+        for i in unscaled_target_indices:
+            scaler.means[i] = 0
+            scaler.stds[i] = 1
         scaled_targets = scaler.transform(targets).tolist()
         self.set_targets(scaled_targets)
 

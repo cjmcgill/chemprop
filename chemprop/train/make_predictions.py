@@ -397,7 +397,6 @@ def make_predictions(
         ) = load_model(args, generator=True)
     
     if args.vle is not None and args.vle != "basic":
-        print(num_tasks, task_names)
         task_names = ["y1","y2","log10P","gamma_1", "gamma_2", "log10P1sat", "log10P2sat"]
         num_tasks = 7
 

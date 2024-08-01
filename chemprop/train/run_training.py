@@ -169,15 +169,27 @@ def run_training(args: TrainArgs,
     if args.dataset_type == 'regression':
         debug('Fitting scaler')
         # scale targets
-        if args.vle_inf_dilution and args.vle != "basic": # no scaling for y1, y2, g1_inf
-            # this will result in upweighting of g1_inf for non-fugacity balance models
-            unscaled_target_indices = [0,1,3]
-        elif args.vle is not None: # no scaling for y1, y2. Either no g1_inf or "basic" vle and g1_inf is scaled
-            unscaled_target_indices = [0,1]
+        if args.vle is not None:
+            if args.vle == "basic":
+                unscaled_target_indices = [0,1]
+                offset_only_indices = []
+                no_offset_indices = []
+            elif args.vle_inf_dilution:
+                unscaled_target_indices = [0,1,3]
+                offset_only_indices = [2]
+                no_offset_indices = []
+            else:
+                unscaled_target_indices = [0,1]
+                offset_only_indices = [2]
+                no_offset_indices = []
         else:
-            unscaled_target_indices = None
+            unscaled_target_indices = []
+            offset_only_indices = []
+            no_offset_indices = []
 
-        scaler = train_data.normalize_targets(unscaled_target_indices)
+        scaler = train_data.normalize_targets(unscaled_target_indices=unscaled_target_indices,
+                                              offset_only_indices=offset_only_indices,
+                                              no_offset_indices=no_offset_indices)
 
         # hybrid model features scaling
         if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
