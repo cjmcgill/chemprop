@@ -11,14 +11,13 @@ def forward_vle_basic(
     vle output calculation for the basic vle model
     """
     if vle_inf_dilution:
-        y_1, log10P, gamma_inf_dilution = torch.chunk(output, 3, dim=1)
-        y_2 = 1 - y_1
-        output = torch.cat([y_1, y_2, log10P, gamma_inf_dilution], axis=1)
+        logit_y1, logit_y2, log10P, gamma_inf_dilution = torch.chunk(output, 4, dim=1)
+        ys = torch.softmax(torch.cat([logit_y1, logit_y2], axis=1), dim=1)
+        output = torch.cat([ys, log10P, gamma_inf_dilution], axis=1)
     else:
-        logity_1, log10P = torch.chunk(output, 2, dim=1)
-        y_1 = nn.functional.sigmoid(logity_1)
-        y_2 = 1 - y_1
-        output = torch.cat([y_1, y_2, log10P], axis=1)
+        logit_y1, logit_y2, log10P = torch.chunk(output, 3, dim=1)
+        ys = torch.softmax(torch.cat([logit_y1, logit_y2], axis=1), dim=1)
+        output = torch.cat([ys, log10P], axis=1)
     return output
 
 

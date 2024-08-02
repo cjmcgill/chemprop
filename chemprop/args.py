@@ -511,6 +511,9 @@ class TrainArgs(CommonArgs):
     """The highest interaction order to be considered in a Wohl VLE model"""
     fugacity_balance: bool = False
     """Whether to use an activity prediction based on the squared difference of ln fugacity between the liquid and vapor phases."""
+    binary_equivariant: bool = False
+    """Whether to use a binary equivariant model for an order invariant mixture."""
+
 
 
     def __init__(self, *args, **kwargs) -> None:

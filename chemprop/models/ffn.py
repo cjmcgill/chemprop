@@ -52,3 +52,24 @@ def build_ffn(
         ])
 
     return nn.Sequential(*layers)
+
+
+def binary_equivariant_readout(
+    encoding_1: torch.Tensor,
+    encoding_2: torch.Tensor,
+    features: Optional[torch.Tensor],
+    readout: nn.Module,
+    output_equivariant_pairs: List[Tuple[int, int]] = [],
+    features_equivariant_pairs: List[Tuple[int, int]] = [],
+) -> nn.Sequential:
+    """
+    """ # TODO these need to be concatenated
+    features_1 = features
+    features_2 = features.clone()
+    for i, j in features_equivariant_pairs:
+        features_2[:, [i, j]] = features_1[:, [j, i]]
+    output_1 = readout(torch.cat([encoding_1, encoding_2, features_1], dim=1))
+    output_2 = readout(torch.cat([encoding_2, encoding_1, features_2], dim=1))
+    for i, j in output_equivariant_pairs:
+        output_2[:, [i, j]] = output_2[:, [j, i]]
+    return output_1 + output_2

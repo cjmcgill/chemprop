@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from .mpn import MPN
-from .ffn import build_ffn
+from .ffn import build_ffn, binary_equivariant_readout
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
@@ -38,6 +38,7 @@ class MoleculeModel(nn.Module):
         self.noisy_temperature = args.noisy_temperature
         self.sigmoid = nn.functional.sigmoid
         self.softplus = nn.functional.softplus
+        self.binary_equivariant = args.binary_equivariant
 
         self.output_size = args.num_tasks
 
@@ -48,11 +49,38 @@ class MoleculeModel(nn.Module):
             if self.vle is None:
                 self.output_size = self.vp_output_size
 
-        if self.vle == "activity":
-            self.output_size = 2
+        if self.vle == "basic":
+            if self.vle_inf_dilution:
+                self.output_size = 4 # y_1, y_2, log10P, gamma1_inf_dilution
+            else:
+                self.output_size = 3 # y_1, y_2, log10P
+        elif self.vle == "activity":
+            self.output_size = 2 # gamma_1, gamma_2
         elif self.vle == "wohl":
             wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
             self.output_size = wohl_number_parameters_dict[self.wohl_order]
+
+        if self.binary_equivariant:
+            if self.wohl_order == 2: # a12; a112, a122; a1112, a1222, a1122; a11112, a11122, a11222, a12222
+                self.output_equivariant_pairs = []
+                self.features_equivariant_pairs = [] # T
+            elif self.wohl_order == 3:
+                self.output_equivariant_pairs = [(1,2)]
+                self.features_equivariant_pairs = []
+            elif self.wohl_order == 4:
+                self.output_equivariant_pairs = [(1,2), (3,5)]
+                self.features_equivariant_pairs = []
+            elif self.wohl_order == 5:
+                self.output_equivariant_pairs = [(1,2), (3,5), (6,9), (7,8)]
+                self.features_equivariant_pairs = []
+            elif self.vle == "activity":
+                self.output_equivariant_pairs = [(0,1)]
+                self.features_equivariant_pairs = [(0,1)] # x1, x2, T
+            elif self.vle == "basic":
+                self.output_equivariant_pairs = [(0,1)] # y1, y2, log10P
+                self.features_equivariant_pairs = [(0,1), (3,4)] # x1, x2, T, log10P1sat, log10P2sat
+            else:
+                raise ValueError(f"Unsupported equivariant method with vle {self.vle}.")
 
         self.create_encoder(args)
         self.create_ffn(args)
@@ -84,6 +112,8 @@ class MoleculeModel(nn.Module):
         first_linear_dim = args.hidden_size * args.number_of_molecules
         if args.use_input_features:
             first_linear_dim += args.features_size
+        if self.binary_equivariant:
+            first_linear_dim = 2 * args.hidden_size + args.features_size # 2 molecules + features
 
         # Create FFN layers
         self.readout = build_ffn(
@@ -247,6 +277,7 @@ class MoleculeModel(nn.Module):
             noise_batch = np.random.randn(len(features_batch)) * self.noisy_temperature
             input_temperature_batch += noise_batch
 
+        # Make the encodings
         encodings = self.encoder(
             batch,
             features_batch,
@@ -255,14 +286,18 @@ class MoleculeModel(nn.Module):
             bond_descriptors_batch,
             bond_features_batch,
         )
-        output = self.readout(encodings)
 
-        # Extra outputs for VLE models
-        if self.vle == "wohl" or self.intrinsic_vp:
+        if self.vle == "wohl" or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
             encoding_1 = torch.concatenate([encoding_1, input_temperature_batch], axis=1) # include T feature at the end
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
             encoding_2 = torch.concatenate([encoding_2, input_temperature_batch], axis=1) # include T feature at the end
+
+        # readout section
+        if self.binary_equivariant and self.vle is None:
+            output = self.binary_equivariant(encoding_1, encoding_2, input_temperature_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
+        else:
+            output = self.readout(encodings)
 
         if self.vle == "wohl":
             q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
