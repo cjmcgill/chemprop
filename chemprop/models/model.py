@@ -62,7 +62,7 @@ class MoleculeModel(nn.Module):
 
         if self.binary_equivariant:
             if self.vle == "wohl":
-                if self.wohl_order == 2: # a12; a112, a122; a1112, a1222, a1122; a11112, a11122, a11222, a12222
+                if self.wohl_order == 2: # a12; a112, a122; a1112, a1122, a1222; a11112, a11122, a11222, a12222
                     self.output_equivariant_pairs = []
                     self.features_equivariant_pairs = [] # T
                 elif self.wohl_order == 3:
