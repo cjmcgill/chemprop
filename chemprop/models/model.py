@@ -61,18 +61,21 @@ class MoleculeModel(nn.Module):
             self.output_size = wohl_number_parameters_dict[self.wohl_order]
 
         if self.binary_equivariant:
-            if self.wohl_order == 2: # a12; a112, a122; a1112, a1222, a1122; a11112, a11122, a11222, a12222
-                self.output_equivariant_pairs = []
-                self.features_equivariant_pairs = [] # T
-            elif self.wohl_order == 3:
-                self.output_equivariant_pairs = [(1,2)]
-                self.features_equivariant_pairs = []
-            elif self.wohl_order == 4:
-                self.output_equivariant_pairs = [(1,2), (3,5)]
-                self.features_equivariant_pairs = []
-            elif self.wohl_order == 5:
-                self.output_equivariant_pairs = [(1,2), (3,5), (6,9), (7,8)]
-                self.features_equivariant_pairs = []
+            if self.vle == "wohl":
+                if self.wohl_order == 2: # a12; a112, a122; a1112, a1222, a1122; a11112, a11122, a11222, a12222
+                    self.output_equivariant_pairs = []
+                    self.features_equivariant_pairs = [] # T
+                elif self.wohl_order == 3:
+                    self.output_equivariant_pairs = [(1,2)]
+                    self.features_equivariant_pairs = []
+                elif self.wohl_order == 4:
+                    self.output_equivariant_pairs = [(1,2), (3,5)]
+                    self.features_equivariant_pairs = []
+                elif self.wohl_order == 5:
+                    self.output_equivariant_pairs = [(1,2), (3,5), (6,9), (7,8)]
+                    self.features_equivariant_pairs = []
+                else:
+                    raise ValueError(f"Unsupported equivariant method with wohl order {self.wohl_order}.")
             elif self.vle == "activity":
                 self.output_equivariant_pairs = [(0,1)]
                 self.features_equivariant_pairs = [(0,1)] # x1, x2, T
@@ -289,25 +292,23 @@ class MoleculeModel(nn.Module):
 
         if self.vle == "wohl" or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
-            encoding_1 = torch.concatenate([encoding_1, input_temperature_batch], axis=1) # include T feature at the end
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
-            encoding_2 = torch.concatenate([encoding_2, input_temperature_batch], axis=1) # include T feature at the end
 
         # readout section
-        if self.binary_equivariant and self.vle is None:
-            output = self.binary_equivariant(encoding_1, encoding_2, input_temperature_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
+        if self.binary_equivariant:
+            output = binary_equivariant_readout(encoding_1, encoding_2, input_temperature_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
         else:
             output = self.readout(encodings)
 
         if self.vle == "wohl":
-            q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
-            q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+            q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], axis=1)))
+            q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], axis=1)))
 
         if self.intrinsic_vp:
-            vp1_output = self.intrinsic_vp(encoding_1)
-            vp2_output = self.intrinsic_vp(encoding_2)
-            log10p1sat = forward_vp(self.vp, vp1_output, input_temperature_batch)
-            log10p2sat = forward_vp(self.vp, vp2_output, input_temperature_batch)
+            vp1_output = self.intrinsic_vp(torch.cat([encoding_1, input_temperature_batch], axis=1))
+            vp2_output = self.intrinsic_vp(torch.cat([encoding_2, input_temperature_batch], axis=1))
+            log10p1sat = forward_vp(self.vp, vp1_output, output_temperature_batch)
+            log10p2sat = forward_vp(self.vp, vp2_output, output_temperature_batch)
         elif self.vle is not None:
             log10p1sat = hybrid_model_features_batch[:,[3]]
             log10p2sat = hybrid_model_features_batch[:,[4]]

@@ -63,7 +63,7 @@ def binary_equivariant_readout(
     features_equivariant_pairs: List[Tuple[int, int]] = [],
 ) -> nn.Sequential:
     """
-    """ # TODO these need to be concatenated
+    """
     features_1 = features
     features_2 = features.clone()
     for i, j in features_equivariant_pairs:
