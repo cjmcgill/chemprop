@@ -79,6 +79,8 @@ class MoleculeModel(nn.Module):
                     self.relative_output_size *= 10/4 #10 parameter for 9th-order wohl model
             elif self.vle == "nrtl":
                 self.relative_output_size *= 3/4 #tau12 tau21 alpha
+            elif self.vle == "nrtl-wohl":
+                self.relative_output_size *= 5/4
                 
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
@@ -93,6 +95,8 @@ class MoleculeModel(nn.Module):
                 self.relative_output_size *= 10/3 #for 9th order wohl
         elif self.vle == "nrtl":
             self.relative_output_size *= 1 #tau12 tau21 alpha
+        elif self.vle == "nrtl-wohl":
+            self.relative_output_size *= 1
 
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
@@ -215,6 +219,41 @@ class MoleculeModel(nn.Module):
                     spectra_activation=args.spectra_activation,
                 )
 
+
+        if self.vle == "nrtl-wohl":
+            self.nrtl_params = build_ffn(
+                first_linear_dim=self.hidden_size + 1, 
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=3,  # tau12, tau21, alpha
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
+           
+            self.omega_nrtl = build_ffn(
+                first_linear_dim=self.hidden_size + 1, 
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=1,  # omega_NRTL
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
+            self.wohl_q = build_ffn(
+                first_linear_dim=self.hidden_size + 1,
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=1,  # q
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
+
+  
         
             vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
             if self.fugacity_balance == "intrinsic_vp":
@@ -440,7 +479,143 @@ class MoleculeModel(nn.Module):
                 output = self.multiclass_softmax(
                     output
                 )  # to get probabilities during evaluation, but not during training when using CrossEntropyLoss
+        
+        if self.vle == "nrtl-wohl":
+            encoding_1 = encodings[:,:self.hidden_size]
+            encoding_1 = torch.concatenate([encoding_1, hybrid_model_features_batch[:,[2]]], axis=1)
+            encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
+            encoding_2 = torch.concatenate([encoding_2, hybrid_model_features_batch[:,[2]]], axis=1)
 
+            # NRTL parameters
+            nrtl_params = self.nrtl_params(encoding_1)
+            tau_12, tau_21, alpha = torch.chunk(nrtl_params, 3, dim=1)
+
+            # Wohl parameters
+            if args.wohl_order == 3:
+                a12, a112, a122 = torch.chunk(output, 3, dim=1)
+            elif args.wohl_order == 6:
+                a12, a112, a122, a1112, a1222, a1122 = torch.chunk(output, 6, dim=1)
+            elif args.wohl_order == 9:
+                a12, a112, a122, a1112, a1222, a1122, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
+
+            q_1 = nn.functional.softplus(self.wohl_q(encoding_1))
+            q_2 = nn.functional.softplus(self.wohl_q(encoding_2))
+
+            # Mixing parameter
+            omega_nrtl = torch.sigmoid(self.omega_nrtl(encoding_1))
+            omega_wohl = 1 - omega_nrtl
+
+            x_1 = hybrid_model_features_batch[:,[0]]
+            x_2 = hybrid_model_features_batch[:,[1]]
+            T = hybrid_model_features_batch[:,[2]]
+            log10p1sat = hybrid_model_features_batch[:,[3]]
+            log10p2sat = hybrid_model_features_batch[:,[4]]
+
+            # NRTL calculations
+            G_12 = torch.exp(-alpha * tau_12)
+            G_21 = torch.exp(-alpha * tau_21)
+            
+            ln_gamma_1_nrtl = x_2**2 * (tau_21 * (G_21 / (x_1 + x_2 * G_21))**2 +
+                                        tau_12 * G_12 / (x_2 + x_1 * G_12)**2)
+            ln_gamma_2_nrtl = x_1**2 * (tau_12 * (G_12 / (x_2 + x_1 * G_12))**2 +
+                                        tau_21 * G_21 / (x_1 + x_2 * G_21)**2)
+
+            # Wohl calculations
+            z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
+            z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
+            
+            if args.wohl_order == 3:
+                ln_gamma_1_wohl = (
+                    2 * a12 * z_2**2 * q_1 +
+                    6 * a112 * z_1 * z_2**2 * q_1 -
+                    3 * a122 * z_1 * z_2**2 * q_1 +
+                    3 * a122 * z_2**3 * q_1
+                )
+                ln_gamma_2_wohl = (
+                    2 * a12 * z_1**2 * q_2 +
+                    3 * a112 * z_1**3 * q_2 -
+                    3 * a112 * z_1**2 * z_2 * q_2 +
+                    6 * a122 * z_1**2 * z_2 * q_2
+                )
+            elif args.wohl_order == 6:
+                ln_gamma_1_wohl = (
+                    2 * a12 * z_2**2 * q_1 +
+                    6 * a112 * z_1 * z_2**2 * q_1 -
+                    3 * a122 * z_1 * z_2**2 * q_1 +
+                    3 * a122 * z_2**3 * q_1 +
+                    12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
+                    4 * a1222 * q_1 * z_2**4 -
+                    8 * a1222 * z_1 * q_1 * z_2**3 +
+                    12 * a1122 * z_1 * q_1 * z_2**3 -
+                    6 * a1122 * z_1**2 * q_1 * z_2**2
+                )
+                ln_gamma_2_wohl = (
+                    2 * a12 * z_1**2 * q_2 +
+                    3 * a112 * z_1**3 * q_2 -
+                    3 * a112 * z_1**2 * z_2 * q_2 +
+                    6 * a122 * z_1**2 * z_2 * q_2 +
+                    4 * a1112 * z_1**4 * q_2 -
+                    8 * a1112 * z_1**3 * z_2 * q_2 +
+                    12 * a1122 * z_1**2 * z_2**2 * q_2 +
+                    12 * a1222 * z_1**3 * z_2 * q_2 -
+                    6 * a1222 * z_1**2 * z_2**2 * q_2
+                )
+            elif args.wohl_order == 9:
+                ln_gamma_1_wohl = (
+                    2 * a12 * z_2**2 * q_1 +
+                    6 * a112 * z_1 * z_2**2 * q_1 -
+                    3 * a122 * z_1 * z_2**2 * q_1 +
+                    3 * a122 * z_2**3 * q_1 +
+                    12 * a1112 * z_1**2 * q_1 * z_2**2 * q_2 +
+                    4 * a1222 * q_1 * z_2**4 -
+                    8 * a1222 * z_1 * q_1 * z_2**3 +
+                    12 * a1122 * z_1 * q_1 * z_2**3 -
+                    6 * a1122 * z_1**2 * q_1 * z_2**2 +
+                    20 * a11112 * z_1**3 * q_1 * z_2**2 +
+                    30 * a11122 * z_1**2 * q_1 * z_2**3 -
+                    10 * a11122 * z_1**3 * q_1 * z_2**2 +
+                    20 * a11222 * z_1 * q_1 * z_2**4 -
+                    20 * a11222 * z_1**2 * q_1 * z_2**3 +
+                    5 * a12222 * q_1 * z_2**5 -
+                    15 * a12222 * z_1 * q_1 * z_2**4
+                )
+                ln_gamma_2_wohl = (
+                    2 * a12 * z_1**2 * q_2 +
+                    3 * a112 * z_1**3 * q_2 -
+                    3 * a112 * z_1**2 * z_2 * q_2 +
+                    6 * a122 * z_1**2 * z_2 * q_2 +
+                    4 * a1112 * z_1**4 * q_2 -
+                    8 * a1112 * z_1**3 * z_2 * q_2 +
+                    12 * a1122 * z_1**2 * z_2**2 * q_2 +
+                    12 * a1222 * z_1**3 * z_2 * q_2 -
+                    6 * a1222 * z_1**2 * z_2**2 * q_2 +
+                    5 * a11112 * z_1**5 * q_2 -
+                    15 * a11112 * z_1**4 * z_2 * q_2 +
+                    10 * a11122 * z_1**4 * z_2 * q_2 -
+                    10 * a11122 * z_1**3 * z_2**2 * q_2 +
+                    30 * a11222 * z_1**2 * z_2**3 * q_2 -
+                    10 * a11222 * z_1**3 * z_2**2 * q_2 +
+                    20 * a12222 * z_1**2 * z_2**3 * q_2
+                )
+
+            # Hybrid model
+            ln_gamma_1 = omega_nrtl * ln_gamma_1_nrtl + omega_wohl * ln_gamma_1_wohl
+            ln_gamma_2 = omega_nrtl * ln_gamma_2_nrtl + omega_wohl * ln_gamma_2_wohl
+
+            gamma_1 = torch.exp(ln_gamma_1)
+            gamma_2 = torch.exp(ln_gamma_2)
+
+            # Calculate y1, y2, and log10P
+            p1sat = 10**log10p1sat
+            p2sat = 10**log10p2sat
+            P1 = p1sat * x_1 * gamma_1
+            P2 = p2sat * x_2 * gamma_2
+            P = P1 + P2
+            y_1 = P1 / P
+            y_2 = P2 / P
+            log10P = torch.log10(P)
+
+            output = torch.cat([y_1, y_2, log10P], dim=1)
         # Apply post-processing for VLE models
         if self.vle is not None:
             x_1 = hybrid_model_features_batch[:,[0]]
@@ -465,6 +640,9 @@ class MoleculeModel(nn.Module):
                                             tau_12 * G_12 / (x_2 + x_1 * G_12)**2))
                 gamma_2 = torch.exp(x_1**2 * (tau_12 * (G_12 / (x_2 + x_1 * G_12))**2 +
                                             tau_21 * G_21 / (x_1 + x_2 * G_21))**2)
+            elif self.vle == 'nrtl-wohl':
+                pass
+
             elif self.vle == "wohl":
                 if args.wohl_order ==3:
                     a12, a112, a122 = torch.chunk(output, 3, dim=1)
@@ -565,7 +743,7 @@ class MoleculeModel(nn.Module):
             else: # fugacity_balance == "intrinsic_vp" or "tabulated_vp"
                 # if self.training:
                     output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
-                
+
         # VP
         if self.vp is not None and self.fugacity_balance is None:
             output = self.forward_vp(output, hybrid_model_features_batch)

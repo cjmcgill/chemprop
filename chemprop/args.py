@@ -507,7 +507,7 @@ class TrainArgs(CommonArgs):
     """The functional form to use for vapor pressure prediction."""
     noisy_temperature: float = None
     """Whether to use a noise factor to smooth the prediction of vapor pressure parameters."""
-    vle: Literal["basic", "activity", "wohl", "nrtl"] = None
+    vle: Literal["basic", "activity", "wohl", "nrtl", "nrtl-wohl"] = None
     """Which VLE model to use."""
     fugacity_balance: Literal['intrinsic_vp', 'tabulated_vp'] = None
     """Whether to use an activity prediction based on the squared difference of ln fugacity between the liquid and vapor phases."""

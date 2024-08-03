@@ -590,7 +590,7 @@ def get_data(path: str,
 
         # Modify features for VLE
         if args.fugacity_balance is not None: # features x1, x2, T, log10P1sat, log10P2sat; targets y1 y2 P g1inf
-            if args.vle == ['wohl', 'nrtl']: # reduction for both intrinsic and tabulated vp
+            if args.vle == ['wohl', 'nrtl', 'nrtl-wohl']: # reduction for both intrinsic and tabulated vp
                 all_features = np.array(all_features)[:, [2]].tolist() # T only
             elif args.vle == "activity":
                 all_features = np.array(all_features)[:, :3].tolist() # x1, x2, T
