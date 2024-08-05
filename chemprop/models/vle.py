@@ -85,7 +85,7 @@ def forward_vle_wohl(
             6 * a1222 * z_1**2 * z_2**2 * q_2
         )
     elif wohl_order == 5:
-        a12, a112, a122, a1112, a1222, a1122, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
+        a12, a112, a122, a1112, a1122, a1222, a11112, a11122, a11222, a12222 = torch.chunk(output, 10, dim=1)
         gamma_1 = torch.exp(
             2 * a12 * z_2**2 * q_1 +
             6 * a112 * z_1 * z_2**2 * q_1 -
