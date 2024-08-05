@@ -74,7 +74,7 @@ def get_parameters(
 
         parameters = np.array(parameters)
 
-        if args.unscale_parameters:
+        if not args.internal_scaled_parameters:
             unscaled_parameters = []
             if args.vle not in [None, "basic", "activity"]:
                 num_vle = model.vle_output_size

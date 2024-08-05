@@ -1048,7 +1048,7 @@ class FingerprintArgs(PredictArgs):
 
 class ParameterArgs(PredictArgs):
     """:class:`FingerprintArgs` includes :class:`PredictArgs` with additional arguments for the generation of latent fingerprint vectors."""
-    unscale_parameters: bool = False
+    internal_scaled_parameters: bool = False
     """Whether to unscale the parameters before saving them."""
 
 
