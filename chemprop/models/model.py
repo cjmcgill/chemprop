@@ -80,8 +80,13 @@ class MoleculeModel(nn.Module):
             elif self.vle == "nrtl":
                 self.relative_output_size *= 3/4 #tau12 tau21 alpha
             elif self.vle == "nrtl-wohl":
-                self.relative_output_size *= 5/4
-                
+                if args.wohl_order == 3:
+                    self.relative_output_size *= 1/4
+                elif args.wohl_order == 6:
+                    self.relative_output_size *= 1
+                elif args.wohl_order == 9:
+                    self.relative_output_size *= 2
+            
         elif self.vle == "basic":
             self.relative_output_size *= 2/3 # gets out y_1 and log10P, but calculates y_2 from it to return three results
         elif self.vle == "activity":
@@ -96,7 +101,12 @@ class MoleculeModel(nn.Module):
         elif self.vle == "nrtl":
             self.relative_output_size *= 1 #tau12 tau21 alpha
         elif self.vle == "nrtl-wohl":
-            self.relative_output_size *= 1
+            if args.wohl_order == 3:
+                self.relative_output_size *= 1 
+            elif args.wohl_order == 6:
+                self.relative_output_size *= 2
+            elif args.wohl_order == 9:
+                self.relative_output_size *= 10/3
 
         elif self.vp == 'basic':
             self.relative_output_size *= 1 # predicts vp directly
@@ -196,6 +206,7 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
+            #ffn creation block for the wohl model
             if self.vle == "wohl":
                 self.wohl_q = build_ffn(
                     first_linear_dim=self.hidden_size + 1, # +1 for temperature only
@@ -207,6 +218,7 @@ class MoleculeModel(nn.Module):
                     dataset_type=args.dataset_type,
                     spectra_activation=args.spectra_activation,
                 )
+            #ffn creation block for the nrtl model
             elif self.vle =="nrtl":
                 self.nrtl_params = build_ffn(
                     first_linear_dim=self.hidden_size + 1, 
@@ -218,8 +230,7 @@ class MoleculeModel(nn.Module):
                     dataset_type=args.dataset_type,
                     spectra_activation=args.spectra_activation,
                 )
-
-
+        # ffn creation block for the hybrid nrtl-wohl model
         if self.vle == "nrtl-wohl":
             self.nrtl_params = build_ffn(
                 first_linear_dim=self.hidden_size + 1, 
@@ -231,7 +242,7 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-           
+            #this is basically a weighting factor (0-1) to see which model dominates
             self.omega_nrtl = build_ffn(
                 first_linear_dim=self.hidden_size + 1, 
                 hidden_size=args.ffn_hidden_size,
@@ -252,9 +263,7 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-
-  
-        
+            #vp ffn
             vp_output_size_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5}
             if self.fugacity_balance == "intrinsic_vp":
                 self.intrinsic_vp = build_ffn(
@@ -616,6 +625,7 @@ class MoleculeModel(nn.Module):
             log10P = torch.log10(P)
 
             output = torch.cat([y_1, y_2, log10P], dim=1)
+            return output, omega_nrtl
         # Apply post-processing for VLE models
         if self.vle is not None:
             x_1 = hybrid_model_features_batch[:,[0]]
@@ -794,4 +804,4 @@ class MoleculeModel(nn.Module):
             else:
                 output = nn.functional.softplus(output) + 1
 
-        return output
+        return output, None
