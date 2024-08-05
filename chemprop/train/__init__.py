@@ -6,6 +6,7 @@ from .cross_validate import chemprop_train, cross_validate, TRAIN_LOGGER_NAME
 from .evaluate import evaluate, evaluate_predictions
 from .make_predictions import chemprop_predict, make_predictions, load_model, set_features, load_data, predict_and_save
 from .molecule_fingerprint import chemprop_fingerprint, model_fingerprint
+from .parameters import chemprop_parameters
 from .predict import predict
 from .run_training import run_training
 from .train import train
@@ -18,6 +19,7 @@ __all__ = [
     'evaluate_predictions',
     'chemprop_predict',
     'chemprop_fingerprint',
+    'chemprop_parameters',
     'make_predictions',
     'load_model',
     'set_features',

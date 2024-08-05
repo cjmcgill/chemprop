@@ -46,3 +46,54 @@ def forward_vp(
             log10Pr = (riedel_a + riedel_b / Tr + riedel_c * torch.log(Tr) + riedel_d * Tr**riedel_e)
         output = log10Pc + log10Pr
     return output
+
+
+def get_vp_parameter_names(
+        vp: str,
+        molecule_id: int = None,
+):
+    """
+    Get the coefficients for the vapor pressure model. If there are multiple molecules
+    in a mixture for vle prediction, the coefficients are suffixed with the molecule ID.
+    """
+    if vp == "antoine":
+        names = ["antoine_a", "antoine_b", "antoine_c"]
+    elif vp == "four_var":
+        names = ["antoine_a", "antoine_b", "antoine_c", "antoine_d"]
+    elif vp == "five_var":
+        names = ["antoine_a", "antoine_b", "antoine_c", "antoine_d", "antoine_e"]
+    elif vp == "simplified":
+        names = ["antoine_a", "antoine_b"]
+    elif vp == "ambrose4":
+        names = ["ambrose_a", "ambrose_b", "ambrose_c", "ambrose_d"]
+    elif vp == "ambrose5":
+        names = ["ambrose_a", "ambrose_b", "ambrose_c", "ambrose_d", "ambrose_e"]
+    elif vp == "riedel4":
+        names = ["riedel_a", "riedel_b", "riedel_c", "riedel_d"]
+    elif vp == "riedel5":
+        names = ["riedel_a", "riedel_b", "riedel_c", "riedel_d", "riedel_e"]
+    else:
+        raise NotImplementedError(f"Vapor pressure model {vp} not supported")
+    if molecule_id is not None:
+        names = [f"{name}_{molecule_id}" for name in names]
+    return names
+
+
+def unscale_vp_parameters(
+        parameters: np.ndarray,
+        target_scaler,
+        hybrid_model_features_scaler,
+        vp: str,
+):
+    """
+    Unscale the vapor pressure parameters.
+    """
+    if vp == "antoine":
+        antoine_a, antoine_b, antoine_c = np.split(parameters, 3, axis=1)
+        antoine_a = target_scaler.stds[0] * antoine_a - target_scaler.means[0]
+        antoine_b = target_scaler.stds[0] * hybrid_model_features_scaler.stds[0] * antoine_b
+        antoine_c = hybrid_model_features_scaler.stds[0] * antoine_c - hybrid_model_features_scaler.means[0]
+        parameters = np.concatenate([antoine_a, antoine_b, antoine_c], axis=1)
+    else:
+        raise NotImplementedError(f"Vapor pressure model {vp} not supported for unscaling vp parameters")
+    return parameters

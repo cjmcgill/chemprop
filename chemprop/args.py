@@ -1046,6 +1046,12 @@ class FingerprintArgs(PredictArgs):
     """Choice of which type of latent fingerprint vector to use. Default is the output of the MPNN, excluding molecular features"""
 
 
+class ParameterArgs(PredictArgs):
+    """:class:`FingerprintArgs` includes :class:`PredictArgs` with additional arguments for the generation of latent fingerprint vectors."""
+    unscale_parameters: bool = False
+    """Whether to unscale the parameters before saving them."""
+
+
 class HyperoptArgs(TrainArgs):
     """:class:`HyperoptArgs` includes :class:`TrainArgs` along with additional arguments used for optimizing Chemprop hyperparameters."""
 

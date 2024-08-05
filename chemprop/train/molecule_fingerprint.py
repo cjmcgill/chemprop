@@ -112,7 +112,7 @@ def molecule_fingerprint(args: FingerprintArgs,
 
     for index, checkpoint_path in enumerate(tqdm(args.checkpoint_paths, total=len(args.checkpoint_paths))):
         model = load_checkpoint(checkpoint_path, device=args.device)
-        scaler, features_scaler, atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler = load_scalers(args.checkpoint_paths[index])
+        scaler, features_scaler, atom_descriptor_scaler, bond_descriptor_scaler, atom_bond_scaler, hybrid_model_features_scaler = load_scalers(args.checkpoint_paths[index])
 
         # Normalize features
         if args.features_scaling or train_args.atom_descriptor_scaling or train_args.bond_descriptor_scaling:

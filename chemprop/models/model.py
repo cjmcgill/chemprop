@@ -10,8 +10,8 @@ from .ffn import build_ffn, binary_equivariant_readout
 from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
-from .vp import forward_vp
-from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl
+from .vp import forward_vp, get_vp_parameter_names
+from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, get_wohl_parameters
 
 
 class MoleculeModel(nn.Module):
@@ -49,16 +49,18 @@ class MoleculeModel(nn.Module):
             if self.vle is None:
                 self.output_size = self.vp_output_size
 
-        if self.vle == "basic":
-            if self.vle_inf_dilution:
-                self.output_size = 4 # y_1, y_2, log10P, gamma1_inf_dilution
-            else:
-                self.output_size = 3 # y_1, y_2, log10P
-        elif self.vle == "activity":
-            self.output_size = 2 # gamma_1, gamma_2
-        elif self.vle == "wohl":
-            wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
-            self.output_size = wohl_number_parameters_dict[self.wohl_order]
+        if self.vle is not None:
+            if self.vle == "basic":
+                if self.vle_inf_dilution:
+                    self.vle_output_size = 4 # y_1, y_2, log10P, gamma1_inf_dilution
+                else:
+                    self.vle_output_size = 3 # y_1, y_2, log10P
+            elif self.vle == "activity":
+                self.vle_output_size = 2 # gamma_1, gamma_2
+            elif self.vle == "wohl":
+                wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
+                self.vle_output_size = wohl_number_parameters_dict[self.wohl_order]
+            self.output_size = self.vle_output_size
 
         if self.binary_equivariant:
             if self.vle == "wohl":
@@ -221,7 +223,8 @@ class MoleculeModel(nn.Module):
         bond_features_batch: List[np.ndarray] = None,
         constraints_batch: List[torch.Tensor] = None,
         bond_types_batch: List[torch.Tensor] = None,
-        hybrid_model_features_batch: List[np.ndarray] = None, 
+        hybrid_model_features_batch: List[np.ndarray] = None,
+        get_parameters: bool = False,
     ) -> torch.Tensor:
         """
         Runs the :class:`MoleculeModel` on input.
@@ -315,6 +318,24 @@ class MoleculeModel(nn.Module):
         else:
             log10p1sat = None
             log10p2sat = None
+
+        # get parameters if not full predicting
+        if get_parameters:
+            names, parameters = [], torch.empty(len(output), 0)
+            if self.vle == "wohl":
+                act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
+                names += act_names
+                parameters = torch.cat([parameters, act_parameters], axis=1)
+            if self.intrinsic_vp and self.vp != "basic":
+                vp1_names = get_vp_parameter_names(self.vp, 1)
+                vp2_names = get_vp_parameter_names(self.vp, 2)
+                names += vp1_names + vp2_names
+                parameters = torch.cat([parameters, vp1_output, vp2_output], axis=1)
+            elif self.vp is not None and self.vp != "basic":
+                vp_names = get_vp_parameter_names(self.vp)
+                names += vp_names
+                parameters = torch.cat([parameters, output], axis=1)
+            return names, parameters
 
         # VLE models
         if self.vle == "basic":

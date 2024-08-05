@@ -126,3 +126,37 @@ def forward_vle_wohl(
         raise NotImplementedError(f"Wohl order {wohl_order} not supported")
 
     return gamma_1, gamma_2
+
+
+def get_wohl_parameters(
+        output: torch.Tensor,
+        wohl_order: int,
+        q_1: torch.Tensor,
+        q_2: torch.Tensor,
+):
+    """
+    Get the Wohl coefficients and their names. Order of coefficients must match forward_vle_wohl function.
+    """
+    if wohl_order == 3:
+        coefficients = torch.cat([output,q_1,q_2], axis=1)
+        names = ['a12', 'a112', 'a122', 'q1', 'q2']
+    elif wohl_order == 4:
+        coefficients = torch.cat([output,q_1,q_2], axis=1)
+        names = ['a12', 'a112', 'a122', 'a1112', 'a1122', 'a1222', 'q1', 'q2']
+    elif wohl_order == 5:
+        coefficients = torch.cat([output,q_1,q_2], axis=1)
+        names = ['a12', 'a112', 'a122', 'a1112', 'a1122', 'a1222', 'a11112', 'a11122', 'a11222', 'a12222', 'q1', 'q2']
+    else:
+        raise NotImplementedError(f"Wohl order {wohl_order} not supported")
+
+    return coefficients, names
+
+
+def unscale_vle_parameters(
+        parameters: np.ndarray,
+        target_scaler,
+        hybrid_model_features_scaler,
+        vle: str,
+):
+    # none of the current methods are affected by scaling
+    return parameters
