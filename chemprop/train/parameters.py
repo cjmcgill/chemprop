@@ -86,13 +86,13 @@ def get_parameters(
                 if args.vp is not None and args.vp != "basic":
                     num_vp = model.vp_output_size
                     vp1_parameters = parameters[:, num_vle:num_vle+num_vp]
-                    vp1_parameters = unscale_vp_parameters(vp_parameters, scaler, hybrid_model_features_scaler, args.vp)
+                    vp1_parameters = unscale_vp_parameters(vp1_parameters, scaler, hybrid_model_features_scaler, args.vle, args.vp)
                     unscaled_parameters.append(vp1_parameters)
                     vp2_parameters = parameters[:, num_vle+num_vp:]
-                    vp2_parameters = unscale_vp_parameters(vp2_parameters, scaler, hybrid_model_features_scaler, args.vp)
+                    vp2_parameters = unscale_vp_parameters(vp2_parameters, scaler, hybrid_model_features_scaler, args.vle, args.vp)
                     unscaled_parameters.append(vp2_parameters)
             elif args.vp not in [None, "basic"]:
-                vp_parameters = unscale_vp_parameters(parameters, hybrid_model_features_scaler, args.vp)
+                vp_parameters = unscale_vp_parameters(parameters, scaler, hybrid_model_features_scaler, args.vle, args.vp)
                 unscaled_parameters.append(vp_parameters)
             parameters = np.concatenate(unscaled_parameters, axis=1)
 

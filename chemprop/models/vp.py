@@ -83,17 +83,52 @@ def unscale_vp_parameters(
         parameters: np.ndarray,
         target_scaler,
         hybrid_model_features_scaler,
+        vle: str,
         vp: str,
 ):
     """
     Unscale the vapor pressure parameters.
     """
+    if vle is not None:
+        mean_p, std_p = target_scaler.means[2], target_scaler.stds[2]
+        scale_t = hybrid_model_features_scaler.stds[2]
+    else:
+        mean_p, std_p = target_scaler.means[0], target_scaler.stds[0]
+        scale_t = hybrid_model_features_scaler.stds[0]
     if vp == "antoine":
         antoine_a, antoine_b, antoine_c = np.split(parameters, 3, axis=1)
-        antoine_a = target_scaler.stds[0] * antoine_a - target_scaler.means[0]
-        antoine_b = target_scaler.stds[0] * hybrid_model_features_scaler.stds[0] * antoine_b
-        antoine_c = hybrid_model_features_scaler.stds[0] * antoine_c - hybrid_model_features_scaler.means[0]
+        antoine_a = std_p * antoine_a - mean_p
+        antoine_b = std_p * scale_t * antoine_b
+        antoine_c = scale_t * antoine_c
         parameters = np.concatenate([antoine_a, antoine_b, antoine_c], axis=1)
+        print("unscaled the parameters antoine")
+        print(target_scaler.means)
+        print(target_scaler.stds)
+        print(hybrid_model_features_scaler.means)
+        print(hybrid_model_features_scaler.stds)
+    elif vp == "four_var":
+        antoine_a, antoine_b, antoine_c, antoine_d = np.split(parameters, 4, axis=1)
+        antoine_b = std_p * scale_t * antoine_b
+        antoine_c = scale_t * antoine_c
+        antoine_d = std_p * antoine_d / scale_t ** 6
+        antoine_a = std_p * antoine_a - antoine_c * np.log10(scale_t) + mean_p
+        parameters = np.concatenate([antoine_a, antoine_b, antoine_c, antoine_d], axis=1)
+    elif vp == "five_var":
+        antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = np.split(parameters, 5, axis=1)
+        antoine_b = std_p * scale_t * antoine_b
+        antoine_c = scale_t * antoine_c
+        antoine_d = std_p * antoine_d / scale_t ** antoine_e
+        antoine_a = std_p * antoine_a - antoine_c * np.log10(scale_t) + mean_p
+        parameters = np.concatenate([antoine_a, antoine_b, antoine_c, antoine_d, antoine_e], axis=1)
+    elif vp == "simplified":
+        antoine_a, antoine_b = np.split(parameters, 2, axis=1)
+        antoine_a = std_p * antoine_a - mean_p
+        antoine_b = std_p * scale_t * antoine_b
+        parameters = np.concatenate([antoine_a, antoine_b], axis=1)
+    elif vp in ["ambrose4", "ambrose5"]:
+        parameters = std_p * parameters
+    elif vp in ["riedel4", "riedel5"]:
+        parameters = std_p * parameters[:, :5] # if riedel5, don't unscale the riedel_e parameter
     else:
         raise NotImplementedError(f"Vapor pressure model {vp} not supported for unscaling vp parameters")
     return parameters

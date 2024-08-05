@@ -149,7 +149,7 @@ def get_wohl_parameters(
     else:
         raise NotImplementedError(f"Wohl order {wohl_order} not supported")
 
-    return coefficients, names
+    return names, coefficients
 
 
 def unscale_vle_parameters(
