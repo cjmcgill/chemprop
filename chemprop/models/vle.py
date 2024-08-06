@@ -182,6 +182,59 @@ def get_nrtl_parameters(
     names = ['tau_12', 'tau_21', 'alpha']
     return names, output
 
+def forward_vle_nrtl_wohl(
+    output: torch.Tensor,
+    x_1: torch.Tensor,
+    x_2: torch.Tensor,
+    q_1: torch.Tensor,
+    q_2: torch.Tensor,
+    wohl_order: int,
+    omega_nrtl: torch.Tensor,
+):
+    """
+    VLE output calculation for the NRTL-Wohl hybrid model
+    """
+    # NRTL calculations
+    tau_12, tau_21, alpha = torch.chunk(output[:, :3], 3, dim=1)
+    G_12 = torch.exp(-alpha * tau_12)
+    G_21 = torch.exp(-alpha * tau_21)
+    
+    ln_gamma_1_nrtl = x_2**2 * (tau_21 * (G_21 / (x_1 + x_2 * G_21))**2 +
+                                tau_12 * G_12 / (x_2 + x_1 * G_12)**2)
+    ln_gamma_2_nrtl = x_1**2 * (tau_12 * (G_12 / (x_2 + x_1 * G_12))**2 +
+                                tau_21 * G_21 / (x_1 + x_2 * G_21)**2)
+
+    # Wohl calculations
+    z_1 = q_1 * x_1 / (q_1 * x_1 + q_2 * x_2)
+    z_2 = q_2 * x_2 / (q_1 * x_1 + q_2 * x_2)
+    
+    wohl_params = output[:, 3:]
+    gamma_1_wohl, gamma_2_wohl = forward_vle_wohl(wohl_params, wohl_order, x_1, x_2, q_1, q_2)
+    ln_gamma_1_wohl = torch.log(gamma_1_wohl)
+    ln_gamma_2_wohl = torch.log(gamma_2_wohl)
+
+    # Hybrid model
+    ln_gamma_1 = omega_nrtl * ln_gamma_1_nrtl + (1 - omega_nrtl) * ln_gamma_1_wohl
+    ln_gamma_2 = omega_nrtl * ln_gamma_2_nrtl + (1 - omega_nrtl) * ln_gamma_2_wohl
+
+    gamma_1 = torch.exp(ln_gamma_1)
+    gamma_2 = torch.exp(ln_gamma_2)
+
+    return gamma_1, gamma_2
+
+def get_nrtl_wohl_parameters(
+    output: torch.Tensor,
+    wohl_order: int,
+    q_1: torch.Tensor,
+    q_2: torch.Tensor,
+):
+    nrtl_names = ['tau_12', 'tau_21', 'alpha']
+    wohl_names, _ = get_wohl_parameters(output[:, 3:], wohl_order, q_1, q_2)
+    names = nrtl_names + wohl_names[:-2]  # Exclude 'q1' and 'q2' from wohl_names
+    parameters = output
+    return names, parameters
+
+
 def unscale_vle_parameters(
         parameters: np.ndarray,
         target_scaler,
