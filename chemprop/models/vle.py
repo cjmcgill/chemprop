@@ -151,6 +151,36 @@ def get_wohl_parameters(
 
     return names, coefficients
 
+def forward_vle_nrtl(
+    output: torch.Tensor,
+    x_1: torch.Tensor,
+    x_2: torch.Tensor,
+):
+    """
+    VLE output calculation for the NRTL model
+    """
+    tau_12, tau_21, alpha = torch.chunk(output, 3, dim=1)
+    G_12 = torch.exp(-alpha * tau_12)
+    G_21 = torch.exp(-alpha * tau_21)
+    
+    ln_gamma_1 = x_2**2 * (tau_21 * (G_21 / (x_1 + x_2 * G_21))**2 +
+                           tau_12 * G_12 / (x_2 + x_1 * G_12)**2)
+    ln_gamma_2 = x_1**2 * (tau_12 * (G_12 / (x_2 + x_1 * G_12))**2 +
+                           tau_21 * G_21 / (x_1 + x_2 * G_21)**2)
+    
+    gamma_1 = torch.exp(ln_gamma_1)
+    gamma_2 = torch.exp(ln_gamma_2)
+    
+    return gamma_1, gamma_2
+
+def get_nrtl_parameters(
+    output: torch.Tensor,
+):
+    """
+    Get the NRTL coefficients and their names.
+    """
+    names = ['tau_12', 'tau_21', 'alpha']
+    return names, output
 
 def unscale_vle_parameters(
         parameters: np.ndarray,

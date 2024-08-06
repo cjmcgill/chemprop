@@ -11,7 +11,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from .vp import forward_vp, get_vp_parameter_names
-from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, get_wohl_parameters
+from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, forward_vle_nrtl, get_wohl_parameters, get_nrtl_parameters
 
 
 class MoleculeModel(nn.Module):
@@ -60,7 +60,10 @@ class MoleculeModel(nn.Module):
             elif self.vle == "wohl":
                 wohl_number_parameters_dict = {2: 1, 3: 3, 4: 6, 5: 10}
                 self.vle_output_size = wohl_number_parameters_dict[self.wohl_order]
+            elif self.vle == "nrtl":
+                self.vle_output_size = 3 # tau12 tau21 alpha
             self.output_size = self.vle_output_size
+
 
         if self.binary_equivariant:
             if self.vle == "wohl":
@@ -84,6 +87,9 @@ class MoleculeModel(nn.Module):
             elif self.vle == "basic":
                 self.output_equivariant_pairs = [(0,1)] # y1, y2, log10P
                 self.features_equivariant_pairs = [(0,1), (3,4)] # x1, x2, T, log10P1sat, log10P2sat
+            elif self.vle == "nrtl":
+                self.output_equivariant_pairs = [(0,1)] # tau_12, tau_21
+                self.features_equivariant_pairs = [(0,1)] # x1, x2, T
             else:
                 raise ValueError(f"Unsupported equivariant method with vle {self.vle}.")
 
@@ -153,7 +159,18 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-
+        if self.vle == "nrtl":
+            self.nrtl_params = build_ffn(
+                first_linear_dim=2*self.hidden_size + 1,  # 2 * 300 (for encoding_1 and encoding_2) + 1 (for temperature)
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=3,  # tau_12, tau_21, alpha
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
+      
     def fingerprint(
         self,
         batch: Union[
@@ -296,7 +313,8 @@ class MoleculeModel(nn.Module):
         if self.vle == "wohl" or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
-
+        encoding_1 = encodings[:,:self.hidden_size] # first molecule
+        encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
         # readout section
         if self.binary_equivariant:
             output = binary_equivariant_readout(encoding_1, encoding_2, input_temperature_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
@@ -335,6 +353,10 @@ class MoleculeModel(nn.Module):
                 vp_names = get_vp_parameter_names(self.vp)
                 names += vp_names
                 parameters = torch.cat([parameters, output], axis=1)
+            elif self.vle == "nrtl":
+                nrtl_names, nrtl_parameters = get_nrtl_parameters(output)
+                names += nrtl_names
+                parameters = torch.cat([parameters, nrtl_parameters], axis=1)
             return names, parameters
 
         # VLE models
@@ -354,6 +376,13 @@ class MoleculeModel(nn.Module):
                     q_1=q_1,
                     q_2=q_2,
                 )
+            elif self.vle == "nrtl":
+                nrtl_output = self.nrtl_params(torch.cat([encoding_1, encoding_2, input_temperature_batch], dim=1))
+                gamma_1, gamma_2 = forward_vle_nrtl(
+                    output=nrtl_output,
+                    x_1=x_1,
+                    x_2=x_2
+                )           
             else:
                 raise ValueError(f"Unsupported VLE model {self.vle}.")
             
