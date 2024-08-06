@@ -92,6 +92,18 @@ class MoleculeModel(nn.Module):
             elif self.vle == "nrtl":
                 self.output_equivariant_pairs = [(0,1)] # tau_12, tau_21
                 self.features_equivariant_pairs = [(0,1)] # x1, x2, T
+            elif self.vle == "nrtl-wohl":
+                nrtl_pairs = [(0,1)]  # tau_12, tau_21
+                if self.wohl_order == 3:
+                    wohl_pairs = [(4,5)]
+                elif self.wohl_order == 4:
+                    wohl_pairs = [(4,5), (6,8)]
+                elif self.wohl_order == 5:
+                    wohl_pairs = [(4,5), (6,8), (9,12), (10,11)]
+                else:
+                    raise ValueError(f"Unsupported equivariant method with wohl order {self.wohl_order} for NRTL-Wohl.")
+                self.output_equivariant_pairs = nrtl_pairs + wohl_pairs
+                self.features_equivariant_pairs = [(0,1)]  # x1, x2, T
             else:
                 raise ValueError(f"Unsupported equivariant method with vle {self.vle}.")
 
