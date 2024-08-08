@@ -72,4 +72,4 @@ def binary_equivariant_readout(
     output_2 = readout(torch.cat([encoding_2, encoding_1, features_2], dim=1))
     for i, j in output_equivariant_pairs:
         output_2[:, [i, j]] = output_2[:, [j, i]]
-    return output_1 + output_2
+    return (output_1 + output_2) / 2
