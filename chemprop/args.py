@@ -512,8 +512,9 @@ class TrainArgs(CommonArgs):
     fugacity_balance: bool = False
     """Whether to use an activity prediction based on the squared difference of ln fugacity between the liquid and vapor phases."""
     binary_equivariant: bool = False
-    """Whether to use a binary equivariant model for an order invariant mixture."""
-
+    """Whether to use a binary equivariant model for a vle order invariant mixture model."""
+    self_activity_correction: bool = False
+    """Whether to use a self-activity correction for the binary vle model."""
 
 
     def __init__(self, *args, **kwargs) -> None:

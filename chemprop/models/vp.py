@@ -101,11 +101,6 @@ def unscale_vp_parameters(
         antoine_b = std_p * scale_t * antoine_b
         antoine_c = scale_t * antoine_c
         parameters = np.concatenate([antoine_a, antoine_b, antoine_c], axis=1)
-        print("unscaled the parameters antoine")
-        print(target_scaler.means)
-        print(target_scaler.stds)
-        print(hybrid_model_features_scaler.means)
-        print(hybrid_model_features_scaler.stds)
     elif vp == "four_var":
         antoine_a, antoine_b, antoine_c, antoine_d = np.split(parameters, 4, axis=1)
         antoine_b = std_p * scale_t * antoine_b

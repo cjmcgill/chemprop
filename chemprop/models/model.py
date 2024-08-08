@@ -38,6 +38,7 @@ class MoleculeModel(nn.Module):
         self.sigmoid = nn.functional.sigmoid
         self.softplus = nn.functional.softplus
         self.binary_equivariant = args.binary_equivariant
+        self.self_activity_correction = args.self_activity_correction
 
         self.output_size = args.num_tasks
 
@@ -365,6 +366,16 @@ class MoleculeModel(nn.Module):
         else:
             output = self.readout(encodings)
 
+        if self.self_activity_correction:
+            if self.vle == "basic":
+                raise ValueError("Self activity correction is not compatible with basic VLE model.")
+            if self.binary_equivariant:
+                output_1 = binary_equivariant_readout(encoding_1, encoding_1, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
+                output_2 = binary_equivariant_readout(encoding_2, encoding_2, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
+            else:
+                output_1 = self.readout(encoding_1)
+                output_2 = self.readout(encoding_2)
+
         if self.vle == "wohl":
             q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], axis=1)))
             q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], axis=1)))
@@ -388,6 +399,20 @@ class MoleculeModel(nn.Module):
                 act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
                 names += act_names
                 parameters = torch.cat([parameters, act_parameters], axis=1)
+                if self.self_activity_correction:
+                    act1_names, act1_parameters = get_wohl_parameters(output_1, self.wohl_order, q_1, q_1, 1)
+                    act2_names, act2_parameters = get_wohl_parameters(output_2, self.wohl_order, q_2, q_2, 2)
+                    names += act1_names + act2_names
+                    parameters = torch.cat([parameters, act1_parameters, act2_parameters], axis=1)
+            elif self.vle == "nrtl":
+                nrtl_names, nrtl_parameters = get_nrtl_parameters(output)
+                names += nrtl_names
+                parameters = torch.cat([parameters, nrtl_parameters], axis=1)
+                if self.self_activity_correction:
+                    nrtl1_names, nrtl1_parameters = get_nrtl_parameters(output_1, 1)
+                    nrtl2_names, nrtl2_parameters = get_nrtl_parameters(output_2, 2)
+                    names += nrtl1_names + nrtl2_names
+                    parameters = torch.cat([parameters, nrtl1_parameters, nrtl2_parameters], axis=1)
             if self.intrinsic_vp and self.vp != "basic":
                 vp1_names = get_vp_parameter_names(self.vp, 1)
                 vp2_names = get_vp_parameter_names(self.vp, 2)
@@ -397,10 +422,6 @@ class MoleculeModel(nn.Module):
                 vp_names = get_vp_parameter_names(self.vp)
                 names += vp_names
                 parameters = torch.cat([parameters, output], axis=1)
-            elif self.vle == "nrtl":
-                nrtl_names, nrtl_parameters = get_nrtl_parameters(output)
-                names += nrtl_names
-                parameters = torch.cat([parameters, nrtl_parameters], axis=1)
             return names, parameters
 
         # VLE models
@@ -408,25 +429,20 @@ class MoleculeModel(nn.Module):
             output = forward_vle_basic(output, self.vle_inf_dilution)
         elif self.vle is not None:
             if self.vle == "activity":
-                gamma_1, gamma_2 = forward_vle_activity(
-                    output=output,
-                )
+                gamma_1, gamma_2 = forward_vle_activity(output=output)
+                if self.self_activity_correction:
+                    gamma_1_1, gamma_1_2 = forward_vle_activity(output=output_1)
+                    gamma_2_1, gamma_2_2 = forward_vle_activity(output=output_2)
             elif self.vle == "wohl":
-                gamma_1, gamma_2 = forward_vle_wohl(
-                    output=output,
-                    wohl_order=self.wohl_order,
-                    x_1=x_1,
-                    x_2=x_2,
-                    q_1=q_1,
-                    q_2=q_2,
-                )
+                gamma_1, gamma_2 = forward_vle_wohl(output=output, wohl_order=self.wohl_order, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_2)
+                if self.self_activity_correction:
+                    gamma_1_1, gamma_1_2 = forward_vle_wohl(output=output_1, wohl_order=self.wohl_order, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_1)
+                    gamma_2_1, gamma_2_2 = forward_vle_wohl(output=output_2, wohl_order=self.wohl_order, x_1=x_1, x_2=x_2, q_1=q_2, q_2=q_2)
             elif self.vle == "nrtl":
-                nrtl_output = self.nrtl_params(torch.cat([encoding_1, encoding_2, input_temperature_batch], dim=1))
-                gamma_1, gamma_2 = forward_vle_nrtl(
-                    output=nrtl_output,
-                    x_1=x_1,
-                    x_2=x_2
-                )         
+                gamma_1, gamma_2 = forward_vle_nrtl(output=output, x_1=x_1, x_2=x_2)
+                if self.self_activity_correction:
+                    gamma_1_1, gamma_1_2 = forward_vle_nrtl(output=output_1, x_1=x_1, x_2=x_2)
+                    gamma_2_1, gamma_2_2 = forward_vle_nrtl(output=output_2, x_1=x_1, x_2=x_2)
             elif self.vle == "nrtl-wohl":
                 encoding_1 = encodings[:,:self.hidden_size]
                 encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
@@ -437,18 +453,18 @@ class MoleculeModel(nn.Module):
                 q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], dim=1)))
                 omega_nrtl = torch.sigmoid(self.omega_nrtl(input_features))
 
-                gamma_1, gamma_2 = forward_vle_nrtl_wohl(
-                    output=nrtl_wohl_output,
-                    x_1=x_1,
-                    x_2=x_2,
-                    q_1=q_1,
-                    q_2=q_2,
-                    wohl_order=self.wohl_order,
-                    omega_nrtl=omega_nrtl,
-                )
+                gamma_1, gamma_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+                if self.self_activity_correction:
+                    gamma_1_1, gamma_1_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_1, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+                    gamma_2_1, gamma_2_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_2, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
             else:
                 raise ValueError(f"Unsupported VLE model {self.vle}.")
             
+            if self.self_activity_correction:
+                gamma_1 = torch.exp(torch.log(gamma_1) - x_1 * torch.log(gamma_1_1) - x_2 * torch.log(gamma_1_2))
+                gamma_2 = torch.exp(torch.log(gamma_2) - x_1 * torch.log(gamma_2_1) - x_2 * torch.log(gamma_2_2))
+
+            # create output
             if self.training and self.fugacity_balance:
                 output = torch.cat([gamma_1, gamma_2, log10p1sat, log10p2sat], axis=1)
             elif self.training:

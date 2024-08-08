@@ -80,6 +80,8 @@ def get_parameters(
                 num_vle = model.vle_output_size
                 if args.vle == "wohl":
                     num_vle += 2 # q coefficients
+                if args.self_activity_correction:
+                    num_vle *= 3
                 vle_parameters = parameters[:, :num_vle]
                 vle_parameters = unscale_vle_parameters(vle_parameters, hybrid_model_features_scaler, args.vle, args.wohl_order)
                 unscaled_parameters.append(vle_parameters)
@@ -95,8 +97,6 @@ def get_parameters(
                 vp_parameters = unscale_vp_parameters(parameters, scaler, hybrid_model_features_scaler, args.vle, args.vp)
                 unscaled_parameters.append(vp_parameters)
             parameters = np.concatenate(unscaled_parameters, axis=1)
-
-
     # Copy predictions over to full_data
     for index, datapoint in enumerate(test_data):
         row_preds = parameters[index]

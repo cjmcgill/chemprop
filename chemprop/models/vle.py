@@ -133,6 +133,7 @@ def get_wohl_parameters(
         wohl_order: int,
         q_1: torch.Tensor,
         q_2: torch.Tensor,
+        molecule_id: int = None,
 ):
     """
     Get the Wohl coefficients and their names. Order of coefficients must match forward_vle_wohl function.
@@ -148,6 +149,8 @@ def get_wohl_parameters(
         names = ['a12', 'a112', 'a122', 'a1112', 'a1122', 'a1222', 'a11112', 'a11122', 'a11222', 'a12222', 'q1', 'q2']
     else:
         raise NotImplementedError(f"Wohl order {wohl_order} not supported")
+    if molecule_id is not None:
+        names = [f"{name}_{molecule_id}" for name in names]
 
     return names, coefficients
 
@@ -175,11 +178,14 @@ def forward_vle_nrtl(
 
 def get_nrtl_parameters(
     output: torch.Tensor,
+    molecule_id: int = None,
 ):
     """
     Get the NRTL coefficients and their names.
     """
     names = ['tau_12', 'tau_21', 'alpha']
+    if molecule_id is not None:
+        names = [f"{name}_{molecule_id}" for name in names]
     return names, output
 
 def forward_vle_nrtl_wohl(
