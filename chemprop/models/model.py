@@ -361,7 +361,7 @@ class MoleculeModel(nn.Module):
         encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
         # readout section
         if self.binary_equivariant:
-            output = binary_equivariant_readout(encoding_1, encoding_2, input_temperature_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
+            output = binary_equivariant_readout(encoding_1, encoding_2, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
         else:
             output = self.readout(encodings)
 
