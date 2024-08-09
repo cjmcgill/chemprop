@@ -685,6 +685,8 @@ def save_smiles_splits(
         if features_path is not None:
             if dataset.hybrid_model_features() is not None: # vle-activity, vle-wohl, or antoine
                 dataset_features = dataset.original_features()
+            else:
+                dataset_features = dataset.features()
             if extension_sets == {'.csv'}:
                 with open(os.path.join(save_dir, f"{name}_features.csv"), "w", newline="") as f:
                     writer = csv.writer(f)
