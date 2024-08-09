@@ -871,3 +871,55 @@ def multitask_mean(
                 This metric must be added to the appropriate list in the multitask_mean\
                 function in `chemprop/utils.py` in order to be used."
         )
+
+def print_nan_diagnostic(
+        batch: MoleculeDataset,
+        model: MoleculeModel,
+        args: TrainArgs,
+        loss: torch.Tensor,
+        preds: torch.Tensor,
+        logger: logging.Logger,
+):
+    """
+    Function to return useful diagnostic data if NaNs are detected in the model output or 
+    """
+    debug = logger.debug if logger is not None else print
+
+    loss = loss.detach().cpu().numpy()
+    preds = preds.detach().cpu().numpy()
+
+    mol_batch, features_batch, target_batch, mask_batch, atom_descriptors_batch, atom_features_batch, bond_descriptors_batch, bond_features_batch, constraints_batch, data_weights_batch, hybrid_model_features_batch = \
+        batch.batch_graph(), batch.features(), batch.targets(), batch.mask(), batch.atom_descriptors(), \
+        batch.atom_features(), batch.bond_descriptors(), batch.bond_features(), batch.constraints(), batch.data_weights(), batch.hybrid_model_features()
+
+    if args.vle not in ["basic", "activity", None] or args.vp not in ["basic", None]:
+        names, params = model(
+            mol_batch,
+            features_batch,
+            atom_descriptors_batch,
+            atom_features_batch,
+            bond_descriptors_batch,
+            bond_features_batch,
+            constraints_batch,
+            None,
+            hybrid_model_features_batch,
+            get_parameters=True,
+        )
+
+    batch.reset_features_and_targets()
+
+    mol_batch, features_batch, target_batch, mask_batch, atom_descriptors_batch, atom_features_batch, bond_descriptors_batch, bond_features_batch, constraints_batch, data_weights_batch, hybrid_model_features_batch = \
+        batch.batch_graph(), batch.features(), batch.targets(), batch.mask(), batch.atom_descriptors(), \
+        batch.atom_features(), batch.bond_descriptors(), batch.bond_features(), batch.constraints(), batch.data_weights(), batch.hybrid_model_features()
+    
+    smiles_batch = batch.smiles()
+
+    for i in range(len(smiles_batch)):
+        if loss[i].isnan().any() or loss[i].isinf().any() or preds[i].isnan().any() or preds[i].isinf().any():
+            debug(f"NaNs detected in loss or predictions for SMILES: {smiles_batch[i]}")
+            debug(f"Loss: {loss[i]}")
+            debug(f"Scaled Params: {params[i]}")
+            debug(f"Scaled Predictions: {preds[i]}")
+            debug(f"Features: {features_batch[i]}")
+            debug(f"Targets: {target_batch[i]}")
+            debug(f"Hybrid Model Features: {hybrid_model_features_batch[i]}")

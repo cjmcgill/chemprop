@@ -13,6 +13,7 @@ from chemprop.args import TrainArgs
 from chemprop.data import MoleculeDataLoader, MoleculeDataset, AtomBondScaler
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import compute_gnorm, compute_pnorm, NoamLR
+from chemprop.utils import print_nan_diagnostic
 
 
 def train(
@@ -120,6 +121,10 @@ def train(
         else:
             loss = loss_func(preds, targets) * target_weights * data_weights
             loss = torch.where(masks, loss, 0)
+
+        if loss.isnan().any() or loss.isinf().any() or preds.isnan().any() or preds.isinf().any():
+            print_nan_diagnostic(batch, model, args, loss, preds, logger)
+            raise ValueError("Loss or preds contain NaNs or infs")
 
         loss = loss.sum() / masks.sum()
 
