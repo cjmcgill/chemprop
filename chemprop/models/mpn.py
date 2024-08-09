@@ -303,7 +303,10 @@ class MPN(nn.Module):
                 batch = [mol2graph(b) for b in batch]
 
         if self.use_input_features:
-            features_batch = torch.from_numpy(np.stack(features_batch)).float().to(self.device)
+            if isinstance(features_batch, (list, np.ndarray)):
+                features_batch = torch.from_numpy(np.stack(features_batch)).float().to(self.device)
+            else:
+                features_batch = features_batch.to(self.device)
 
             if self.features_only:
                 return features_batch
