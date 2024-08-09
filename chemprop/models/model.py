@@ -43,7 +43,7 @@ class MoleculeModel(nn.Module):
         self.output_size = args.num_tasks
 
         if self.vp is not None:
-            vp_number_parameters_dict = {"basic": 1, "two_var": 2, "antoine": 3, "four_var": 4, "five_var": 5,
+            vp_number_parameters_dict = {"basic": 1, "simplified": 2, "antoine": 3, "four_var": 4, "five_var": 5,
                                          "ambrose4": 4, "ambrose5": 5, "riedel4": 4, "riedel5": 5}
             self.vp_output_size = vp_number_parameters_dict[self.vp]
             if self.vle is None:
