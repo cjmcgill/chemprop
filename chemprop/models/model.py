@@ -394,7 +394,7 @@ class MoleculeModel(nn.Module):
 
         # get parameters if not full predicting
         if get_parameters:
-            names, parameters = [], torch.empty(len(output), 0)
+            names, parameters = [], torch.empty(len(output), 0, device=self.device)
             if self.vle == "wohl":
                 act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
                 names += act_names
