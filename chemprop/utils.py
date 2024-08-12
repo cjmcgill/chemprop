@@ -915,7 +915,7 @@ def print_nan_diagnostic(
     smiles_batch = batch.smiles()
 
     for i in range(len(smiles_batch)):
-        if loss[i].isnan().any() or loss[i].isinf().any() or preds[i].isnan().any() or preds[i].isinf().any():
+        if np.isnan(loss[i]).any() or np.isinf(loss[i]).any() or np.isnan(preds[i]).any() or np.isinf(preds[i]).any():
             debug(f"NaNs detected in loss or predictions for SMILES: {smiles_batch[i]}")
             debug(f"Loss: {loss[i]}")
             debug(f"Scaled Params: {params[i]}")
