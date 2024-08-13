@@ -372,9 +372,9 @@ class MoleculeModel(nn.Module):
             if self.binary_equivariant:
                 output_1 = binary_equivariant_readout(encoding_1, encoding_1, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
                 output_2 = binary_equivariant_readout(encoding_2, encoding_2, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
-            else:
-                output_1 = self.readout(encoding_1)
-                output_2 = self.readout(encoding_2)
+            else: # assumes there are no features that need to be swapped, only features T or [x1,x2,T]
+                output_1 = self.readout(torch.cat([encoding_1, encoding_1, features_batch], axis=1))
+                output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
 
         if self.vle == "wohl":
             q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], axis=1)))
