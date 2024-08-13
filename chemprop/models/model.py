@@ -152,7 +152,7 @@ class MoleculeModel(nn.Module):
             dataset_type=args.dataset_type,
             spectra_activation=args.spectra_activation,
         )
-        if self.vle == "wohl":
+        if self.vle in ["wohl", "nrtl-wohl"]:
             self.wohl_q = build_ffn(
                 first_linear_dim=self.hidden_size + 1, # +1 for temperature only
                 hidden_size=args.ffn_hidden_size,
@@ -174,38 +174,7 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
-        if self.vle == "nrtl":
-            self.nrtl_params = build_ffn(
-                first_linear_dim=2*self.hidden_size + 1,  # 2 * 300 (for encoding_1 and encoding_2) + 1 (for temperature)
-                hidden_size=args.ffn_hidden_size,
-                num_layers=args.ffn_num_layers,
-                output_size=3,  # tau_12, tau_21, alpha
-                dropout=args.dropout,
-                activation=args.activation,
-                dataset_type=args.dataset_type,
-                spectra_activation=args.spectra_activation,
-            )
-        elif self.vle == "nrtl-wohl":
-            self.nrtl_wohl_params = build_ffn(
-                first_linear_dim=2*self.hidden_size + 1,
-                hidden_size=args.ffn_hidden_size,
-                num_layers=args.ffn_num_layers,
-                output_size=self.vle_output_size,
-                dropout=args.dropout,
-                activation=args.activation,
-                dataset_type=args.dataset_type,
-                spectra_activation=args.spectra_activation,
-            )
-            self.wohl_q = build_ffn(
-                first_linear_dim=self.hidden_size + 1,
-                hidden_size=args.ffn_hidden_size,
-                num_layers=args.ffn_num_layers,
-                output_size=1,  # q
-                dropout=args.dropout,
-                activation=args.activation,
-                dataset_type=args.dataset_type,
-                spectra_activation=args.spectra_activation,
-            )
+        if self.vle == "nrtl-wohl":
             self.omega_nrtl = build_ffn(
                 first_linear_dim=2*self.hidden_size + 1,
                 hidden_size=args.ffn_hidden_size,
@@ -355,7 +324,7 @@ class MoleculeModel(nn.Module):
             bond_features_batch,
         )
 
-        if self.vle == "wohl" or self.intrinsic_vp or self.binary_equivariant:
+        if self.vle in ["wohl", "nrtl-wohl"] or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
         encoding_1 = encodings[:,:self.hidden_size] # first molecule
@@ -376,7 +345,7 @@ class MoleculeModel(nn.Module):
                 output_1 = self.readout(torch.cat([encoding_1, encoding_1, features_batch], axis=1))
                 output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
 
-        if self.vle == "wohl":
+        if self.vle in ["wohl", "nrtl-wohl"]:
             q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], axis=1)))
             q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], axis=1)))
 
@@ -444,19 +413,12 @@ class MoleculeModel(nn.Module):
                     gamma_1_1, gamma_1_2 = forward_vle_nrtl(output=output_1, x_1=x_1, x_2=x_2)
                     gamma_2_1, gamma_2_2 = forward_vle_nrtl(output=output_2, x_1=x_1, x_2=x_2)
             elif self.vle == "nrtl-wohl":
-                encoding_1 = encodings[:,:self.hidden_size]
-                encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size]
-                input_features = torch.cat([encoding_1, encoding_2, input_temperature_batch], dim=1)
+                omega_nrtl = torch.sigmoid(self.omega_nrtl(encodings))
 
-                nrtl_wohl_output = self.nrtl_wohl_params(input_features)
-                q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], dim=1)))
-                q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], dim=1)))
-                omega_nrtl = torch.sigmoid(self.omega_nrtl(input_features))
-
-                gamma_1, gamma_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+                gamma_1, gamma_2 = forward_vle_nrtl_wohl(output=output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
                 if self.self_activity_correction:
-                    gamma_1_1, gamma_1_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_1, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
-                    gamma_2_1, gamma_2_2 = forward_vle_nrtl_wohl(output=nrtl_wohl_output, x_1=x_1, x_2=x_2, q_1=q_2, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+                    gamma_1_1, gamma_1_2 = forward_vle_nrtl_wohl(output=output_1, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_1, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+                    gamma_2_1, gamma_2_2 = forward_vle_nrtl_wohl(output=output_2, x_1=x_1, x_2=x_2, q_1=q_2, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
             else:
                 raise ValueError(f"Unsupported VLE model {self.vle}.")
             
