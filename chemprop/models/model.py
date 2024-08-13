@@ -84,17 +84,11 @@ class MoleculeModel(nn.Module):
                     self.features_equivariant_pairs = []
                 else:
                     raise ValueError(f"Unsupported equivariant method with wohl order {self.wohl_order}.")
-            elif self.vle == "activity":
-                self.output_equivariant_pairs = [(0,1)]
-                self.features_equivariant_pairs = [(0,1)] # x1, x2, T
-            elif self.vle == "basic":
-                self.output_equivariant_pairs = [(0,1)] # y1, y2, log10P
-                self.features_equivariant_pairs = [(0,1), (3,4)] # x1, x2, T, log10P1sat, log10P2sat
             elif self.vle == "nrtl":
-                self.output_equivariant_pairs = [(0,1)] # tau_12, tau_21
-                self.features_equivariant_pairs = [(0,1)] # x1, x2, T
+                self.output_equivariant_pairs = [(0,1)] # tau_12, tau_21 alpha
+                self.features_equivariant_pairs = [] # T
             elif self.vle == "nrtl-wohl":
-                nrtl_pairs = [(0,1)]  # tau_12, tau_21
+                nrtl_pairs = [(0,1)]  # tau_12, tau_21 alpha
                 if self.wohl_order == 3:
                     wohl_pairs = [(4,5)]
                 elif self.wohl_order == 4:
@@ -104,7 +98,13 @@ class MoleculeModel(nn.Module):
                 else:
                     raise ValueError(f"Unsupported equivariant method with wohl order {self.wohl_order} for NRTL-Wohl.")
                 self.output_equivariant_pairs = nrtl_pairs + wohl_pairs
-                self.features_equivariant_pairs = [(0,1)]  # x1, x2, T
+                self.features_equivariant_pairs = []  # T
+            elif self.vle == "activity":
+                self.output_equivariant_pairs = [(0,1)]
+                self.features_equivariant_pairs = [(0,1)] # x1, x2, T
+            elif self.vle == "basic":
+                self.output_equivariant_pairs = [(0,1)] # y1, y2, log10P
+                self.features_equivariant_pairs = [(0,1), (3,4)] # x1, x2, T, log10P1sat, log10P2sat
             else:
                 raise ValueError(f"Unsupported equivariant method with vle {self.vle}.")
 
