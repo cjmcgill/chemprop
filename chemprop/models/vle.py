@@ -163,6 +163,7 @@ def forward_vle_nrtl(
     VLE output calculation for the NRTL model
     """
     tau_12, tau_21, alpha = torch.chunk(output, 3, dim=1)
+    alpha = torch.sigmoid(alpha)  # Constrain alpha to [0, 1] range
     G_12 = torch.exp(-alpha * tau_12)
     G_21 = torch.exp(-alpha * tau_21)
     
@@ -202,6 +203,7 @@ def forward_vle_nrtl_wohl(
     """
     # NRTL calculations
     tau_12, tau_21, alpha = torch.chunk(output[:, :3], 3, dim=1)
+    alpha = torch.sigmoid(alpha)  # Constrain alpha to [0, 1] range
     G_12 = torch.exp(-alpha * tau_12)
     G_21 = torch.exp(-alpha * tau_21)
     
