@@ -185,6 +185,8 @@ def get_nrtl_parameters(
     Get the NRTL coefficients and their names.
     """
     names = ['tau_12', 'tau_21', 'alpha']
+    # Apply sigmoid to alpha (third column)
+    output[:, 2] = torch.sigmoid(output[:, 2])
     if molecule_id is not None:
         names = [f"{name}_{molecule_id}" for name in names]
     return names, output
@@ -235,11 +237,13 @@ def get_nrtl_wohl_parameters(
     wohl_order: int,
     q_1: torch.Tensor,
     q_2: torch.Tensor,
+    omega_nrtl: torch.Tensor,
 ):
     nrtl_names = ['tau_12', 'tau_21', 'alpha']
+    output[:, 2] = torch.sigmoid(output[:, 2])  # Apply sigmoid to alpha
     wohl_names, _ = get_wohl_parameters(output[:, 3:], wohl_order, q_1, q_2)
-    names = nrtl_names + wohl_names[:-2]  # Exclude 'q1' and 'q2' from wohl_names
-    parameters = output
+    names = nrtl_names + wohl_names + ['omega_nrtl']
+    parameters = torch.cat([output, q_1, q_2, omega_nrtl], axis=1)
     return names, parameters
 
 

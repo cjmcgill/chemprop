@@ -373,6 +373,16 @@ class MoleculeModel(nn.Module):
                     act2_names, act2_parameters = get_wohl_parameters(output_2, self.wohl_order, q_2, q_2, 2)
                     names += act1_names + act2_names
                     parameters = torch.cat([parameters, act1_parameters, act2_parameters], axis=1)
+            elif self.vle == "nrtl-wohl":
+                omega_nrtl = torch.sigmoid(self.omega_nrtl(encodings))
+                act_names, act_parameters = get_nrtl_wohl_parameters(output, self.wohl_order, q_1, q_2, omega_nrtl)
+                names += act_names
+                parameters = torch.cat([parameters, act_parameters], axis=1)
+                if self.self_activity_correction:
+                    act1_names, act1_parameters = get_nrtl_wohl_parameters(output_1, self.wohl_order, q_1, q_1, omega_nrtl, 1)
+                    act2_names, act2_parameters = get_nrtl_wohl_parameters(output_2, self.wohl_order, q_2, q_2, omega_nrtl, 2)
+                    names += act1_names + act2_names
+                    parameters = torch.cat([parameters, act1_parameters, act2_parameters], axis=1)
             elif self.vle == "nrtl":
                 nrtl_names, nrtl_parameters = get_nrtl_parameters(output)
                 names += nrtl_names
