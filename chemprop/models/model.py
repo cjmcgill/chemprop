@@ -11,8 +11,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from .vp import forward_vp, get_vp_parameter_names
-from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, forward_vle_nrtl, forward_vle_nrtl_wohl, get_wohl_parameters, get_nrtl_parameters, get_nrtl_wohl_parameters
-
+from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, forward_vle_nrtl, forward_vle_nrtl_wohl, get_wohl_parameters, get_nrtl_parameters, get_nrtl_wohl_parameters, forward_vle_uniquac, get_uniquac_parameters
 class MoleculeModel(nn.Module):
     """A :class:`MoleculeModel` is a model which contains a message passing network following by feed-forward layers."""
 
@@ -39,7 +38,8 @@ class MoleculeModel(nn.Module):
         self.softplus = nn.functional.softplus
         self.binary_equivariant = args.binary_equivariant
         self.self_activity_correction = args.self_activity_correction
-
+        self.uniquac_z = args.uniquac_z
+        self.learn_uniquac_z = args.learn_uniquac_z
         self.output_size = args.num_tasks
 
         if self.vp is not None:
@@ -65,10 +65,15 @@ class MoleculeModel(nn.Module):
                 self.vle_output_size = 3 + wohl_number_parameters_dict[self.wohl_order]  # NRTL params + Wohl params
             elif self.vle == "nrtl":
                 self.vle_output_size = 3 # tau12 tau21 alpha
+            elif self.vle == "uniquac":
+                self.vle_output_size = 4  # u12, u21, u11, u22
             self.output_size = self.vle_output_size
             
 
         if self.binary_equivariant:
+            if self.vle == "uniquac":
+                self.output_equivariant_pairs = [(0,1), (2,3), (4,5), (6,7)]  # u12-u21, u11-u22, r1-r2, q1-q2
+                self.features_equivariant_pairs = []  # T
             if self.vle == "wohl":
                 if self.wohl_order == 2: # a12; a112, a122; a1112, a1122, a1222; a11112, a11122, a11222, a12222
                     self.output_equivariant_pairs = []
@@ -185,6 +190,29 @@ class MoleculeModel(nn.Module):
                 dataset_type=args.dataset_type,
                 spectra_activation=args.spectra_activation,
             )
+        if self.vle == "uniquac":
+            self.uniquac_pure_ffn = build_ffn(
+                first_linear_dim=self.hidden_size,
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=2,  # r and q
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
+            if self.learn_uniquac_z:
+                self.uniquac_z_ffn = build_ffn(
+                    first_linear_dim=2*self.hidden_size,
+                    hidden_size=args.ffn_hidden_size,
+                    num_layers=args.ffn_num_layers,
+                    output_size=1,  # Z
+                    dropout=args.dropout,
+                    activation=args.activation,
+                    dataset_type=args.dataset_type,
+                    spectra_activation=args.spectra_activation,
+                )
+
     def fingerprint(
         self,
         batch: Union[
@@ -324,11 +352,12 @@ class MoleculeModel(nn.Module):
             bond_features_batch,
         )
 
-        if self.vle in ["wohl", "nrtl-wohl"] or self.intrinsic_vp or self.binary_equivariant:
+        if self.vle in ["wohl", "nrtl-wohl", "uniquac"] or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
             encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
-        encoding_1 = encodings[:,:self.hidden_size] # first molecule
-        encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
+        else:
+            encoding_1 = encodings[:,:self.hidden_size] # first molecule
+            encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
         # readout section
         if self.binary_equivariant:
             output = binary_equivariant_readout(encoding_1, encoding_2, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
@@ -364,6 +393,25 @@ class MoleculeModel(nn.Module):
         # get parameters if not full predicting
         if get_parameters:
             names, parameters = [], torch.empty(len(output), 0, device=self.device)
+            if self.vle == "uniquac":
+                if self.learn_uniquac_z:
+                    Z = torch.floor(nn.functional.softplus(self.uniquac_z_ffn(encodings))) + 8  # Ensure Z is a positive integer >= 8
+                else:
+                    Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
+                pure_params_1 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_1))
+                pure_params_2 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_2))
+                r1, q1 = torch.chunk(pure_params_1, 2, dim=1)
+                r2, q2 = torch.chunk(pure_params_2, 2, dim=1)
+                uniquac_params = torch.cat([output, r1, r2, q1, q2], dim=1)
+                act_names, act_parameters = get_uniquac_parameters(uniquac_params, x_1, x_2, input_temperature_batch, Z)
+                names += act_names
+                parameters = torch.cat([parameters, act_parameters], dim=1)
+                
+                if self.self_activity_correction:
+                    act1_names, act1_parameters = get_uniquac_parameters(uniquac_params, x_1, x_1, input_temperature_batch, Z, 1)
+                    act2_names, act2_parameters = get_uniquac_parameters(uniquac_params, x_2, x_2, input_temperature_batch, Z, 2)
+                    names += act1_names + act2_names
+                    parameters = torch.cat([parameters, act1_parameters, act2_parameters], dim=1)
             if self.vle == "wohl":
                 act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
                 names += act_names
@@ -424,12 +472,31 @@ class MoleculeModel(nn.Module):
                     gamma_2_1, gamma_2_2 = forward_vle_nrtl(output=output_2, x_1=x_1, x_2=x_2)
             elif self.vle == "nrtl-wohl":
                 omega_nrtl = torch.sigmoid(self.omega_nrtl(encodings))
-
                 gamma_1, gamma_2 = forward_vle_nrtl_wohl(output=output, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
                 if self.self_activity_correction:
                     gamma_1_1, gamma_1_2 = forward_vle_nrtl_wohl(output=output_1, x_1=x_1, x_2=x_2, q_1=q_1, q_2=q_1, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
                     gamma_2_1, gamma_2_2 = forward_vle_nrtl_wohl(output=output_2, x_1=x_1, x_2=x_2, q_1=q_2, q_2=q_2, wohl_order=self.wohl_order, omega_nrtl=omega_nrtl)
+            elif self.vle == "uniquac":
+                if self.learn_uniquac_z:
+                    Z = torch.floor(nn.functional.softplus(self.uniquac_z_ffn(encodings))) + 8  # Ensure Z is a positive integer >= 8
+                else:
+                    Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
+                
+                pure_params_1 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_1))
+                pure_params_2 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_2))
+                r1, q1 = torch.chunk(pure_params_1, 2, dim=1)
+                r2, q2 = torch.chunk(pure_params_2, 2, dim=1)
+                uniquac_params = torch.cat([output, r1, r2, q1, q2], dim=1)
+                gamma_1, gamma_2 = forward_vle_uniquac(uniquac_params, x_1, x_2, input_temperature_batch, Z)
+                
+                if self.self_activity_correction:
+                    gamma_1_1, gamma_1_2 = forward_vle_uniquac(uniquac_params, x_1, x_1, input_temperature_batch, Z)
+                    gamma_2_1, gamma_2_2 = forward_vle_uniquac(uniquac_params, x_2, x_2, input_temperature_batch, Z)
+                    gamma_1 = torch.exp(torch.log(gamma_1) - x_1 * torch.log(gamma_1_1) - x_2 * torch.log(gamma_1_2))
+                    gamma_2 = torch.exp(torch.log(gamma_2) - x_1 * torch.log(gamma_2_1) - x_2 * torch.log(gamma_2_2))
+        
             else:
+
                 raise ValueError(f"Unsupported VLE model {self.vle}.")
             
             if self.self_activity_correction:
