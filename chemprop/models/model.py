@@ -66,7 +66,7 @@ class MoleculeModel(nn.Module):
             elif self.vle == "nrtl":
                 self.vle_output_size = 3 # tau12 tau21 alpha
             elif self.vle == "uniquac":
-                self.vle_output_size = 4  # u12, u21, u11, u22
+                self.vle_output_size = 2  # du12, du21
             self.output_size = self.vle_output_size
             
 
@@ -192,7 +192,7 @@ class MoleculeModel(nn.Module):
             )
         if self.vle == "uniquac":
             self.uniquac_pure_ffn = build_ffn(
-                first_linear_dim=self.hidden_size,
+                first_linear_dim=self.hidden_size + 1,  # +1 for temperature
                 hidden_size=args.ffn_hidden_size,
                 num_layers=args.ffn_num_layers,
                 output_size=2,  # r and q
@@ -377,7 +377,10 @@ class MoleculeModel(nn.Module):
         if self.vle in ["wohl", "nrtl-wohl"]:
             q_1 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_1, input_temperature_batch], axis=1)))
             q_2 = nn.functional.softplus(self.wohl_q(torch.cat([encoding_2, input_temperature_batch], axis=1)))
-
+        if self.vle == "uniquac":
+            r1, q1 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_1, input_temperature_batch], dim=1))), 2, dim=1)
+            r2, q2 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_2, input_temperature_batch], dim=1))), 2, dim=1)
+       
         if self.intrinsic_vp:
             vp1_output = self.intrinsic_vp(torch.cat([encoding_1, input_temperature_batch], axis=1))
             vp2_output = self.intrinsic_vp(torch.cat([encoding_2, input_temperature_batch], axis=1))
@@ -398,20 +401,17 @@ class MoleculeModel(nn.Module):
                     Z = torch.floor(nn.functional.softplus(self.uniquac_z_ffn(encodings))) + 8  # Ensure Z is a positive integer >= 8
                 else:
                     Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
-                pure_params_1 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_1))
-                pure_params_2 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_2))
-                r1, q1 = torch.chunk(pure_params_1, 2, dim=1)
-                r2, q2 = torch.chunk(pure_params_2, 2, dim=1)
-                uniquac_params = torch.cat([output, r1, r2, q1, q2], dim=1)
-                act_names, act_parameters = get_uniquac_parameters(uniquac_params, x_1, x_2, input_temperature_batch, Z)
+                delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
+                act_names, act_parameters = get_uniquac_parameters(output, r1, r2, q1, q2, x_1, x_2, input_temperature_batch, Z)
                 names += act_names
                 parameters = torch.cat([parameters, act_parameters], dim=1)
                 
                 if self.self_activity_correction:
-                    act1_names, act1_parameters = get_uniquac_parameters(uniquac_params, x_1, x_1, input_temperature_batch, Z, 1)
-                    act2_names, act2_parameters = get_uniquac_parameters(uniquac_params, x_2, x_2, input_temperature_batch, Z, 2)
+                    act1_names, act1_parameters = get_uniquac_parameters(output, r1, r2, q1, q2, x_1, x_1, input_temperature_batch, Z, 1)
+                    act2_names, act2_parameters = get_uniquac_parameters(output, r1, r2, q1, q2, x_2, x_2, input_temperature_batch, Z, 2)
                     names += act1_names + act2_names
                     parameters = torch.cat([parameters, act1_parameters, act2_parameters], dim=1)
+            
             if self.vle == "wohl":
                 act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
                 names += act_names
@@ -482,11 +482,8 @@ class MoleculeModel(nn.Module):
                 else:
                     Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
                 
-                pure_params_1 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_1))
-                pure_params_2 = nn.functional.softplus(self.uniquac_pure_ffn(encoding_2))
-                r1, q1 = torch.chunk(pure_params_1, 2, dim=1)
-                r2, q2 = torch.chunk(pure_params_2, 2, dim=1)
-                uniquac_params = torch.cat([output, r1, r2, q1, q2], dim=1)
+                delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
+                uniquac_params = torch.cat([delta_u12, delta_u21, r1, r2, q1, q2], dim=1)
                 gamma_1, gamma_2 = forward_vle_uniquac(uniquac_params, x_1, x_2, input_temperature_batch, Z)
                 
                 if self.self_activity_correction:
@@ -494,7 +491,7 @@ class MoleculeModel(nn.Module):
                     gamma_2_1, gamma_2_2 = forward_vle_uniquac(uniquac_params, x_2, x_2, input_temperature_batch, Z)
                     gamma_1 = torch.exp(torch.log(gamma_1) - x_1 * torch.log(gamma_1_1) - x_2 * torch.log(gamma_1_2))
                     gamma_2 = torch.exp(torch.log(gamma_2) - x_1 * torch.log(gamma_2_1) - x_2 * torch.log(gamma_2_2))
-        
+           
             else:
 
                 raise ValueError(f"Unsupported VLE model {self.vle}.")
