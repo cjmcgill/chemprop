@@ -276,13 +276,14 @@ def forward_vle_uniquac(
     tau12 = torch.exp(-delta_u12 / (R * T))
     tau21 = torch.exp(-delta_u21 / (R * T))
   
-    # Calculate activity coefficients
-    ln_gamma1_c = torch.log(phi1 / x_1) - (Z / 2) * q1 * torch.log(phi1 / theta1) + l1 - (phi1/ theta1) * x_1 * l1 + x_2 * l2
+  
+   # Calculate activity coefficients
+    ln_gamma1_c = torch.log(q1 / (x_1 * q1 + x_2 * q2)) - (Z / 2) * q1 * torch.log(phi1 / theta1) + l1 - (q1 / (x_1 * q1 + x_2 * q2)) * x_1 * l1 + x_2 * l2
     ln_gamma1_r = q1 * (1 - torch.log(theta1 + theta2 * tau21) - (theta1 * tau12 / (theta1 + theta2 * tau21)))
-    
-    
-    ln_gamma2_c = torch.log(phi2 / x_2) + (Z / 2) * q2 * torch.log(phi2 / theta2) + l2 - (phi2/ theta2) * x_1 * l1 + x_2 * l2
+
+    ln_gamma2_c = torch.log(q2 / (x_1 * q1 + x_2 * q2)) + (Z / 2) * q2 * torch.log(phi2 / theta2) + l2 - (q2 / (x_1 * q1 + x_2 * q2)) * x_1 * l1 + x_2 * l2
     ln_gamma2_r = q2 * (1 - torch.log(theta2 + theta1 * tau12) - (theta2 * tau21 / (theta2 + theta1 * tau12)))
+
     
     
     gamma1 = torch.exp(ln_gamma1_c + ln_gamma1_r)
