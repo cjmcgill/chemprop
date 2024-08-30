@@ -306,7 +306,7 @@ class MoleculeModel(nn.Module):
 
         # get temperature and x for use in parameterized equations
         features_batch = torch.from_numpy(np.array(features_batch, dtype=np.float64)).float().to(self.device)
-        if self.vle == "basic":
+        if self.vle in ["basic", "activity"]:
             output_temperature_batch = hybrid_model_features_batch[:,[2]]
             input_temperature_batch = features_batch[:,[2]]
             x_1 = hybrid_model_features_batch[:,[0]]

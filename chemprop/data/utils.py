@@ -529,7 +529,7 @@ def get_data(path: str,
         original_features = all_features # before VLE/VP modification
 
         # Make hybrid_model_features for VLE
-        if args.vle is not None and args.vle != "basic": # x1, x2, T, log10P1sat, log10P2sat
+        if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
             all_hybrid_model_features = all_features # x1, x2, T, log10Psat1, log10Psat2
         elif args.vp in ["ambrose4", "ambrose5", "riedel4", "riedel5"]:
             all_hybrid_model_features = np.array(all_features)[:,[0,1,2]].tolist()
