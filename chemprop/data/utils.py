@@ -542,7 +542,7 @@ def get_data(path: str,
         if args.vle is not None: # x1, x2, T, log10P1sat, log10P2sat
             if args.vle == "basic":
                 pass # all_features = [x1, x2, T, log10P1sat, log10P2sat]
-            if args.vle == "activity":
+            elif args.vle == "activity":
                 all_features = np.array(all_features)[:, :3].tolist() # x1, x2, T
             else: # features considered in binary interactions for wohl and others
                 all_features = np.array(all_features)[:, [2]].tolist() # T only
