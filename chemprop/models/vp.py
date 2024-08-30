@@ -17,15 +17,24 @@ def forward_vp(
         pass
     elif vp == "antoine":
         antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
-        output = antoine_a - (antoine_b / (antoine_c + temperature))
+        antoine_b = nn.functional.softplus(antoine_b)
+        output = antoine_a - (antoine_b / torch.abs(antoine_c + temperature))
     elif vp == "four_var":
         antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
-        output = antoine_a + (antoine_b / temperature) + (antoine_c * torch.log(temperature)) + (antoine_d * torch.pow(temperature, 6))
+        antoine_b = nn.functional.softplus(antoine_b)
+        antoine_c = nn.functional.softplus(antoine_c)
+        antoine_d = nn.functional.softplus(antoine_d)
+        output = antoine_a - (antoine_b / temperature) - (antoine_c * torch.log(temperature)) - (antoine_d * torch.pow(temperature, 6))
     elif vp == "five_var":
         antoine_a, antoine_b, antoine_c, antoine_d, antoine_e = torch.chunk(output, 5, dim=1)
-        output = antoine_a + (antoine_b / temperature) + (antoine_c * torch.log(temperature)) + (antoine_d * torch.pow(temperature, antoine_e))
+        antoine_b = nn.functional.softplus(antoine_b)
+        antoine_c = nn.functional.softplus(antoine_c)
+        antoine_d = nn.functional.softplus(antoine_d)
+        antoine_e = nn.functional.softplus(antoine_e)
+        output = antoine_a - (antoine_b / temperature) - (antoine_c * torch.log(temperature)) - (antoine_d * torch.pow(temperature, antoine_e))
     elif vp == "simplified":
         antoine_a, antoine_b = torch.chunk(output, 2, dim=1)
+        antoine_b = nn.functional.softplus(antoine_b)
         output = antoine_a - (antoine_b / temperature)
     elif vp in ["ambrose4","ambrose5"]:
         tau = 1 - temperature / Tc
@@ -40,10 +49,17 @@ def forward_vp(
         Tr = temperature / Tc
         if vp == "riedel4":
             riedel_a, riedel_b, riedel_c, riedel_d = torch.chunk(output, 4, dim=1)
-            log10Pr = (riedel_a + riedel_b / Tr + riedel_c * torch.log(Tr) + riedel_d * Tr**6)
+            riedel_b = nn.functional.softplus(riedel_b)
+            riedel_c = nn.functional.softplus(riedel_c)
+            riedel_d = nn.functional.softplus(riedel_d)
+            log10Pr = (riedel_a - riedel_b / Tr - riedel_c * torch.log(Tr) - riedel_d * Tr**6)
         elif vp == "riedel5":
             riedel_a, riedel_b, riedel_c, riedel_d, riedel_e = torch.chunk(output, 5, dim=1)
-            log10Pr = (riedel_a + riedel_b / Tr + riedel_c * torch.log(Tr) + riedel_d * Tr**riedel_e)
+            riedel_b = nn.functional.softplus(riedel_b)
+            riedel_c = nn.functional.softplus(riedel_c)
+            riedel_d = nn.functional.softplus(riedel_d)
+            riedel_e = nn.functional.softplus(riedel_e)
+            log10Pr = (riedel_a - riedel_b / Tr - riedel_c * torch.log(Tr) - riedel_d * Tr**riedel_e)
         output = log10Pc + log10Pr
     return output
 
