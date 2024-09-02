@@ -257,9 +257,11 @@ def forward_vle_uniquac(
     VLE output calculation for the UNIQUAC model
     """
     delta_u12, delta_u21, r1, r2, q1, q2 = torch.chunk(uniquac_params, 6, dim=1)
-
-    # Ensure r, q are positive
-    r1, r2, q1, q2 = [nn.functional.softplus(param) for param in [r1, r2, q1, q2]]
+    # Apply softplus to delta_u values
+    delta_u12 = torch.nn.functional.softplus(delta_u12)
+    delta_u21 = torch.nn.functional.softplus(delta_u21)
+  # Ensure r, q are positive and not too small
+    r1, r2, q1, q2 = [torch.clamp(param, min=0.1, max=100) for param in [r1, r2, q1, q2]]
     
     # Calculate structural parameters
     l1 = (Z / 2) * (r1 - q1) - (r1 - 1)
@@ -275,19 +277,23 @@ def forward_vle_uniquac(
     R = 8.314  # J/(mol·K)
     tau12 = torch.exp(-delta_u12 / (R * T))
     tau21 = torch.exp(-delta_u21 / (R * T))
+    tau12 = torch.clamp(tau12, min=0.01, max=100)
+    tau21 = torch.clamp(tau21, min=0.01, max=100)
   
-  
+
    # Calculate activity coefficients
-    ln_gamma1_c = torch.log(q1 / (x_1 * q1 + x_2 * q2)) - (Z / 2) * q1 * torch.log(phi1 / theta1) + l1 - (q1 / (x_1 * q1 + x_2 * q2)) * x_1 * l1 + x_2 * l2
+    ln_gamma1_c = torch.log(r1 / (x_1 * r1 + x_2 * r2)) - (Z / 2) * q1 * torch.log((r1 * (x_1 * q1 + x_2 * q2)) / ((x_1 * r1 + x_2 * r2) * q1)) + l1 - (r1 / (x_1 * r1 + x_2 * r2)) * x_1 * l1 + x_2 * l2
     ln_gamma1_r = q1 * (1 - torch.log(theta1 + theta2 * tau21) - (theta1 * tau12 / (theta1 + theta2 * tau21)))
 
-    ln_gamma2_c = torch.log(q2 / (x_1 * q1 + x_2 * q2)) + (Z / 2) * q2 * torch.log(phi2 / theta2) + l2 - (q2 / (x_1 * q1 + x_2 * q2)) * x_1 * l1 + x_2 * l2
+    ln_gamma2_c = torch.log(r2 / (x_1 * r1 + x_2 * r2)) + (Z / 2) * q2 * torch.log((r2 * (x_1 * q1 + x_2 * q2)) / ((x_1 * r1 + x_2 * r2) * q2)) + l2 - (r2 / (x_1 * q1 + x_2 * r2)) * x_1 * l1 + x_2 * l2
     ln_gamma2_r = q2 * (1 - torch.log(theta2 + theta1 * tau12) - (theta2 * tau21 / (theta2 + theta1 * tau12)))
 
+    # Clamp ln_gamma values to prevent extreme values
+    ln_gamma1 = torch.clamp(ln_gamma1_c + ln_gamma1_r, min=-50, max=50)
+    ln_gamma2 = torch.clamp(ln_gamma2_c + ln_gamma2_r, min=-50, max=50)
     
-    
-    gamma1 = torch.exp(ln_gamma1_c + ln_gamma1_r)
-    gamma2 = torch.exp(ln_gamma2_c + ln_gamma2_r)
+    gamma1 = torch.exp(ln_gamma1)
+    gamma2 = torch.exp(ln_gamma2)
     
     return gamma1, gamma2
 
@@ -304,7 +310,15 @@ def get_uniquac_parameters(
     molecule_id: int = None
 ):
     delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
-    
+    # Apply softplus to delta_u values
+    delta_u12 = torch.nn.functional.softplus(delta_u12)
+    delta_u21 = torch.nn.functional.softplus(delta_u21)
+    # Ensure r and q values are positive and not too small
+    r1 = torch.clamp(r1, min=0.1, max=100)
+    r2 = torch.clamp(r2, min=0.1, max=100)
+    q1 = torch.clamp(q1, min=0.1, max=100)
+    q2 = torch.clamp(q2, min=0.1, max=100)
+
     # Calculate structural parameters
     l1 = (Z / 2) * (r1 - q1) - (r1 - 1)
     l2 = (Z / 2) * (r2 - q2) - (r2 - 1)
@@ -319,6 +333,8 @@ def get_uniquac_parameters(
     R = 8.314  # J/(mol·K)
     tau12 = torch.exp(-delta_u12 / (R * T))
     tau21 = torch.exp(-delta_u21 / (R * T))
+    tau12 = torch.clamp(tau12, min=0.01, max=100)
+    tau21 = torch.clamp(tau21, min=0.01, max=100)
 
     names = ['delta_u12', 'delta_u21', 'r1', 'r2', 'q1', 'q2', 'tau12', 'tau21', 'theta1', 'theta2', 'phi1', 'phi2', 'l1', 'l2', 'Z']
     parameters = torch.cat([delta_u12, delta_u21, r1, r2, q1, q2, tau12, tau21, theta1, theta2, phi1, phi2, l1, l2, Z], dim=1)
