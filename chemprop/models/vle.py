@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 
 
 def forward_vle_basic(
@@ -256,10 +257,12 @@ def forward_vle_uniquac(
     """
     VLE output calculation for the UNIQUAC model
     """
-    delta_u12, delta_u21, r1, r2, q1, q2 = torch.chunk(uniquac_params, 6, dim=1)
-    # Apply softplus to delta_u values
-    delta_u12 = torch.nn.functional.softplus(delta_u12)
-    delta_u21 = torch.nn.functional.softplus(delta_u21)
+    tau12, tau21, r1, r2, q1, q2 = torch.chunk(uniquac_params, 6, dim=1)
+    
+    # Apply softplus to tau values to ensure they are positive
+    tau12 = F.softplus(tau12)
+    tau21 = F.softplus(tau21)
+
   # Ensure r, q are positive and not too small
     r1, r2, q1, q2 = [torch.clamp(param, min=0.1, max=100) for param in [r1, r2, q1, q2]]
     
@@ -275,11 +278,6 @@ def forward_vle_uniquac(
     
     # Calculate taus using the correct equation
     R = 8.314  # J/(mol·K)
-    tau12 = torch.exp(-delta_u12 / (R * T))
-    tau21 = torch.exp(-delta_u21 / (R * T))
-    tau12 = torch.clamp(tau12, min=0.01, max=100)
-    tau21 = torch.clamp(tau21, min=0.01, max=100)
-  
 
    # Calculate activity coefficients
     ln_gamma1_c = torch.log(r1 / (x_1 * r1 + x_2 * r2)) - (Z / 2) * q1 * torch.log((r1 * (x_1 * q1 + x_2 * q2)) / ((x_1 * r1 + x_2 * r2) * q1)) + l1 - (r1 / (x_1 * r1 + x_2 * r2)) * x_1 * l1 + x_2 * l2
@@ -309,10 +307,10 @@ def get_uniquac_parameters(
     Z: torch.Tensor,
     molecule_id: int = None
 ):
-    delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
-    # Apply softplus to delta_u values
-    delta_u12 = torch.nn.functional.softplus(delta_u12)
-    delta_u21 = torch.nn.functional.softplus(delta_u21)
+    tau12, tau21 = torch.chunk(output, 2, dim=1)
+    # Apply softplus to tau values
+    tau12 = F.softplus(tau12)
+    tau21 = F.softplus(tau21)
     # Ensure r and q values are positive and not too small
     r1 = torch.clamp(r1, min=0.1, max=100)
     r2 = torch.clamp(r2, min=0.1, max=100)
@@ -331,13 +329,10 @@ def get_uniquac_parameters(
 
     # Calculate taus using the delta_u values
     R = 8.314  # J/(mol·K)
-    tau12 = torch.exp(-delta_u12 / (R * T))
-    tau21 = torch.exp(-delta_u21 / (R * T))
-    tau12 = torch.clamp(tau12, min=0.01, max=100)
-    tau21 = torch.clamp(tau21, min=0.01, max=100)
+    
 
-    names = ['delta_u12', 'delta_u21', 'r1', 'r2', 'q1', 'q2', 'tau12', 'tau21', 'theta1', 'theta2', 'phi1', 'phi2', 'l1', 'l2', 'Z']
-    parameters = torch.cat([delta_u12, delta_u21, r1, r2, q1, q2, tau12, tau21, theta1, theta2, phi1, phi2, l1, l2, Z], dim=1)
+    names = ['tau12', 'tau21', 'r1', 'r2', 'q1', 'q2', 'theta1', 'theta2', 'phi1', 'phi2', 'l1', 'l2', 'Z']
+    parameters = torch.cat([tau12, tau21, r1, r2, q1, q2, theta1, theta2, phi1, phi2, l1, l2, Z], dim=1)
 
     if molecule_id is not None:
         names = [f"{name}_{molecule_id}" for name in names]

@@ -66,7 +66,7 @@ class MoleculeModel(nn.Module):
             elif self.vle == "nrtl":
                 self.vle_output_size = 3 # tau12 tau21 alpha
             elif self.vle == "uniquac":
-                self.vle_output_size = 2  # du12, du21
+                self.vle_output_size = 2  # tau12, tau21
             self.output_size = self.vle_output_size
             
 
@@ -401,7 +401,9 @@ class MoleculeModel(nn.Module):
                     Z = torch.floor(nn.functional.softplus(self.uniquac_z_ffn(encodings))) + 8  # Ensure Z is a positive integer >= 8
                 else:
                     Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
-                delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
+                tau12, tau21 = torch.chunk(nn.functional.softplus(output), 2, dim=1)  # Apply softplus to ensure positive tau values
+                r1, q1 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_1, input_temperature_batch], dim=1))), 2, dim=1)
+                r2, q2 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_2, input_temperature_batch], dim=1))), 2, dim=1)
                 act_names, act_parameters = get_uniquac_parameters(output, r1, r2, q1, q2, x_1, x_2, input_temperature_batch, Z)
                 names += act_names
                 parameters = torch.cat([parameters, act_parameters], dim=1)
@@ -411,7 +413,7 @@ class MoleculeModel(nn.Module):
                     act2_names, act2_parameters = get_uniquac_parameters(output, r1, r2, q1, q2, x_2, x_2, input_temperature_batch, Z, 2)
                     names += act1_names + act2_names
                     parameters = torch.cat([parameters, act1_parameters, act2_parameters], dim=1)
-            
+
             if self.vle == "wohl":
                 act_names, act_parameters = get_wohl_parameters(output, self.wohl_order, q_1, q_2)
                 names += act_names
@@ -482,8 +484,10 @@ class MoleculeModel(nn.Module):
                 else:
                     Z = torch.full((len(output), 1), self.uniquac_z, device=self.device)
                 
-                delta_u12, delta_u21 = torch.chunk(output, 2, dim=1)
-                uniquac_params = torch.cat([delta_u12, delta_u21, r1, r2, q1, q2], dim=1)
+                tau12, tau21 = torch.chunk(nn.functional.softplus(output), 2, dim=1)  # Apply softplus to ensure positive tau values
+                r1, q1 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_1, input_temperature_batch], dim=1))), 2, dim=1)
+                r2, q2 = torch.chunk(nn.functional.softplus(self.uniquac_pure_ffn(torch.cat([encoding_2, input_temperature_batch], dim=1))), 2, dim=1)
+                uniquac_params = torch.cat([tau12, tau21, r1, r2, q1, q2], dim=1)
                 gamma_1, gamma_2 = forward_vle_uniquac(uniquac_params, x_1, x_2, input_temperature_batch, Z)
                 
                 if self.self_activity_correction:
