@@ -18,7 +18,7 @@ def forward_vp(
     elif vp == "antoine":
         antoine_a, antoine_b, antoine_c = torch.chunk(output, 3, dim=1)
         antoine_b = nn.functional.softplus(antoine_b)
-        output = antoine_a - (antoine_b / torch.abs(antoine_c + temperature))
+        output = antoine_a - (antoine_b / nn.functional.softplus(antoine_c + temperature, beta=0.1))
     elif vp == "four_var":
         antoine_a, antoine_b, antoine_c, antoine_d = torch.chunk(output, 4, dim=1)
         antoine_b = nn.functional.softplus(antoine_b)
