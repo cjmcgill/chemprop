@@ -547,6 +547,9 @@ def get_data(path: str,
             else: # features considered in binary interactions for wohl and others
                 all_features = np.array(all_features)[:, [2]].tolist() # T only
 
+        if args.solubility:
+            all_features = np.array(all_features)[:, [0]].tolist()
+
         data = MoleculeDataset([
             MoleculeDatapoint(
                 smiles=smiles,

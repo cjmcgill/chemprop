@@ -41,6 +41,7 @@ class MoleculeModel(nn.Module):
         self.uniquac_z = args.uniquac_z
         self.learn_uniquac_z = args.learn_uniquac_z
         self.output_size = args.num_tasks
+        self.solubility = args.solubility
 
         if self.vp is not None:
             vp_number_parameters_dict = {"basic": 1, "simplified": 2, "antoine": 3, "four_var": 4, "five_var": 5,
@@ -157,6 +158,17 @@ class MoleculeModel(nn.Module):
             dataset_type=args.dataset_type,
             spectra_activation=args.spectra_activation,
         )
+        if self.solubility:
+            self.single_ffn = build_ffn(
+                first_linear_dim=self.hidden_size + 1, # +1 for temperature only
+                hidden_size=args.ffn_hidden_size,
+                num_layers=args.ffn_num_layers,
+                output_size=1, # log10(solubility)
+                dropout=args.dropout,
+                activation=args.activation,
+                dataset_type=args.dataset_type,
+                spectra_activation=args.spectra_activation,
+            )
         if self.vle in ["wohl", "nrtl-wohl"]:
             self.wohl_q = build_ffn(
                 first_linear_dim=self.hidden_size + 1, # +1 for temperature only
@@ -304,6 +316,18 @@ class MoleculeModel(nn.Module):
         if hybrid_model_features_batch is not None:
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
+        if self.solubility:
+            # temperature = hybrid_model_features_batch[:,[0]]
+            # mw1 = hybrid_model_features_batch[:,[1]]
+            # mw2 = hybrid_model_features_batch[:,[2]]
+            # density2= hybrid_model_features_batch[:,[3]]
+            print('----------------------------')
+            print(hybrid_model_features_batch)
+            print(features_batch)
+            print('----------------------------')
+            assert False
+
+
         # get temperature and x for use in parameterized equations
         features_batch = torch.from_numpy(np.array(features_batch, dtype=np.float64)).float().to(self.device)
         if self.vle in ["basic", "activity"]:
@@ -351,6 +375,9 @@ class MoleculeModel(nn.Module):
             bond_descriptors_batch,
             bond_features_batch,
         )
+        if self.solubility:
+            output_1 = self.readout(torch.cat([encoding_1, encoding_1, features_batch], axis=1))
+            output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
 
         if self.vle in ["wohl", "nrtl-wohl", "uniquac"] or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
@@ -452,6 +479,8 @@ class MoleculeModel(nn.Module):
                 names += vp_names
                 parameters = torch.cat([parameters, output], axis=1)
             return names, parameters
+
+        # if self.solubility:
 
         # VLE models
         if self.vle == "basic":

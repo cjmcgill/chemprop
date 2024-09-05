@@ -519,6 +519,8 @@ class TrainArgs(CommonArgs):
     """Coordination number for UNIQUAC model. Default is 10."""
     learn_uniquac_z: bool = False
     """Whether to learn the coordination number Z for UNIQUAC model."""
+    solubility: bool = True
+
 
     def __init__(self, *args, **kwargs) -> None:
         super(TrainArgs, self).__init__(*args, **kwargs)

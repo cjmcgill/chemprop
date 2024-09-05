@@ -182,6 +182,10 @@ def run_training(args: TrainArgs,
                 unscaled_target_indices = [0,1]
                 offset_only_indices = [2]
                 no_offset_indices = []
+        elif args.solubility:
+            unscaled_target_indices = [0]
+            offset_only_indices = []
+            no_offset_indices = []
         else:
             unscaled_target_indices = []
             offset_only_indices = []
