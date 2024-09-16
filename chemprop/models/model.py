@@ -11,6 +11,7 @@ from chemprop.args import TrainArgs
 from chemprop.features import BatchMolGraph
 from chemprop.nn_utils import initialize_weights
 from .vp import forward_vp, get_vp_parameter_names
+from .solubility import forward_solubility
 from .vle import forward_vle_basic, forward_vle_activity, forward_vle_wohl, forward_vle_nrtl, forward_vle_nrtl_wohl, get_wohl_parameters, get_nrtl_parameters, get_nrtl_wohl_parameters, forward_vle_uniquac, get_uniquac_parameters
 class MoleculeModel(nn.Module):
     """A :class:`MoleculeModel` is a model which contains a message passing network following by feed-forward layers."""
@@ -479,8 +480,8 @@ class MoleculeModel(nn.Module):
             return names, parameters
 
         if self.solubility:
-            print("output_1",output)
-            assert False
+            xi=forward_solubility(output,temperature,mw1,mw2,density2)
+            
 
         # VLE models
         if self.vle == "basic":
