@@ -317,15 +317,11 @@ class MoleculeModel(nn.Module):
             hybrid_model_features_batch = torch.from_numpy(np.array(hybrid_model_features_batch, dtype=np.float64)).float().to(self.device)
 
         if self.solubility:
-            # temperature = hybrid_model_features_batch[:,[0]]
-            # mw1 = hybrid_model_features_batch[:,[1]]
-            # mw2 = hybrid_model_features_batch[:,[2]]
-            # density2= hybrid_model_features_batch[:,[3]]
-            print('----------------------------')
-            print(hybrid_model_features_batch)
-            print(features_batch)
-            print('----------------------------')
-            assert False
+            temperature = hybrid_model_features_batch[:,[0]]
+            mw1 = hybrid_model_features_batch[:,[1]]
+            mw2 = hybrid_model_features_batch[:,[2]]
+            density2= hybrid_model_features_batch[:,[3]]
+
 
 
         # get temperature and x for use in parameterized equations
@@ -376,6 +372,8 @@ class MoleculeModel(nn.Module):
             bond_features_batch,
         )
         if self.solubility:
+            encoding_1 = encodings[:,:self.hidden_size] # first molecule
+            encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
             output_1 = self.readout(torch.cat([encoding_1, encoding_1, features_batch], axis=1))
             output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
 
@@ -480,7 +478,9 @@ class MoleculeModel(nn.Module):
                 parameters = torch.cat([parameters, output], axis=1)
             return names, parameters
 
-        # if self.solubility:
+        if self.solubility:
+            print("output_1",output)
+            assert False
 
         # VLE models
         if self.vle == "basic":

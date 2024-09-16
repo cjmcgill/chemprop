@@ -548,7 +548,9 @@ def get_data(path: str,
                 all_features = np.array(all_features)[:, [2]].tolist() # T only
 
         if args.solubility:
+            all_hybrid_model_features = np.array(all_features)[:, [0,1,2,3]].tolist()
             all_features = np.array(all_features)[:, [0]].tolist()
+            
 
         data = MoleculeDataset([
             MoleculeDatapoint(
