@@ -374,9 +374,9 @@ class MoleculeModel(nn.Module):
         )
         if self.solubility:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
-            encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
-            output_1 = self.readout(torch.cat([encoding_1, encoding_1, features_batch], axis=1))
-            output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
+            # encoding_2 = encodings[:,self.hidden_size:2*self.hidden_size] # second molecule
+            Delta_G_fus = self.single_ffn(torch.cat([encoding_1, features_batch], axis=1))
+            # output_2 = self.readout(torch.cat([encoding_2, encoding_2, features_batch], axis=1))
 
         if self.vle in ["wohl", "nrtl-wohl", "uniquac"] or self.intrinsic_vp or self.binary_equivariant:
             encoding_1 = encodings[:,:self.hidden_size] # first molecule
@@ -388,7 +388,7 @@ class MoleculeModel(nn.Module):
         if self.binary_equivariant:
             output = binary_equivariant_readout(encoding_1, encoding_2, features_batch, self.readout, self.output_equivariant_pairs, self.features_equivariant_pairs)
         else:
-            output = self.readout(encodings)
+            output = self.readout(encodings) # gamma output here
 
         if self.self_activity_correction:
             if self.vle == "basic":
@@ -480,7 +480,8 @@ class MoleculeModel(nn.Module):
             return names, parameters
 
         if self.solubility:
-            xi=forward_solubility(output,temperature,mw1,mw2,density2)
+            logS=forward_solubility(Delta_G_fus,output,temperature,mw1,mw2,density2)
+            output=logS
             
 
         # VLE models
