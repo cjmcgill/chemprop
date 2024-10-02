@@ -789,7 +789,6 @@ def split_data(data: MoleculeDataset,
     elif split_type == "random_binary_pairs":
         smiles_dict = defaultdict(set)
         for i, smiles in enumerate(data.smiles()):
-            smiles.sort()
             smiles_dict[frozenset(smiles)].add(i)  # different from random with repeated smiles because it uses all the molecules not just the key
         index_sets = list(smiles_dict.values())
         random.seed(seed)
