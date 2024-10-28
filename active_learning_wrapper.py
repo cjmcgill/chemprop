@@ -26,8 +26,8 @@ from sklearn.metrics import pairwise_distances_argmin_min
 from collections import Counter
 
 # TODO
-# Sort datasets after determining them for consistency
-# Input option for datasets in a given order.
+# Sort datasets after determining them for consistency unless loading them from an external file
+# Done - Input option for datasets in a given order.
 
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
@@ -678,7 +678,7 @@ def initial_trainval_split(
             active_args.features_path is None)
         assert active_args.initial_trainval_indices_path is None
         trainval_data = get_data(
-            path=active_args.active_initial_trainval_path,
+            path=active_args.initial_trainval_path,
             features_path=active_args.initial_trainval_features_path,
             smiles_columns=active_args.smiles_columns,
             target_columns=active_args.task_names,
@@ -720,6 +720,10 @@ def initial_trainval_split(
             filename_base="whole",
             active_args=active_args,
         )
+        num_data = len(whole_data)
+        num_nontest = len(nontest_indices)
+        if active_args.active_batch_size is None:  # default: 10 steps
+            active_args.active_batch_size = (num_nontest // 10) + 1
     else:
         num_data = len(whole_data)
         num_nontest = len(nontest_data)
@@ -928,18 +932,6 @@ def initial_trainval_split(
                     filename_base="initial_remaining",
                 )
 
-        active_args.train_sizes = list(
-            range(len(trainval_data), num_nontest + 1, active_args.active_batch_size)
-        )
-        if active_args.train_sizes[-1] != num_nontest:
-            active_args.train_sizes.append(num_nontest)
-        if active_args.active_iterations_limit is not None:
-            assert active_args.active_iterations_limit > 1
-            if active_args.active_iterations_limit < len(active_args.train_sizes):
-                active_args.train_sizes = active_args.train_sizes[
-                    : active_args.active_iterations_limit
-                ]
-
         if save_data:
             save_dataset(
                 data=trainval_data,
@@ -953,6 +945,18 @@ def initial_trainval_split(
                 filename_base="initial_remaining",
                 active_args=active_args,
             )
+
+    active_args.train_sizes = list(
+        range(len(trainval_data), num_nontest + 1, active_args.active_batch_size)
+    )
+    if active_args.train_sizes[-1] != num_nontest:
+        active_args.train_sizes.append(num_nontest)
+    if active_args.active_iterations_limit is not None:
+        assert active_args.active_iterations_limit > 1
+        if active_args.active_iterations_limit < len(active_args.train_sizes):
+            active_args.train_sizes = active_args.train_sizes[
+                : active_args.active_iterations_limit
+            ]
 
     return whole_data, trainval_data, remaining_data
 
