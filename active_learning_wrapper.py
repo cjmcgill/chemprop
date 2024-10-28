@@ -25,17 +25,26 @@ import pandas as pd
 from sklearn.metrics import pairwise_distances_argmin_min
 from collections import Counter
 
+# TODO
+# Sort datasets after determining them for consistency
+# Input option for datasets in a given order.
+
 class ActiveArgs(Tap):  # commands that is needed to run active learning
     active_save_dir: str  # save path
     train_config_path: str  # path to a json containing all the arguments
     # usually included in a training submission, except for path arguments
     train_config_path2: str = None  # path to a json containing all the arguments
     # usually included in a training submission to train the comparison model
-    data_path: str  # dataset path
+
+    data_path: str  # dataset path # If both test and initial trainval are provided, this is just remaining data
     features_path: List[str] = None
+
     active_test_path: str = None  # only use if separate from what's
     # in the data file. If a subset, instead use the indices pickle.
     active_test_features_path: List[str] = None
+    initial_trainval_path: str = None
+    initial_trainval_features_path: str = None
+
     active_test_indices_path: str = None  # path to pickle file containing a
     # list of indices for the test set out of the whole data path
     initial_trainval_indices_path: str = None  # path to pickle file containing
@@ -185,14 +194,14 @@ def active_learning(active_args: ActiveArgs):
         cross_validate(args=init_train_args, train_func=run_training)
         makedirs(os.path.join(active_args.active_save_dir, "init"))
         
-    trainval_data, remaining_data = initial_trainval_split(
+    whole_data, trainval_data, remaining_data = initial_trainval_split(
         active_args=active_args,
         nontest_data=nontest_data,
         whole_data=whole_data,
         save_data=False,
         save_indices=True,
     )
-    
+
     spearman, cv, rmses, rmses2, sharpness = [], [], [], [], []
     nll, miscalibration_area, ence, sharpness_root = [], [], [], []
     spearman_cal, cv_cal, sharpness_cal = [], [], []
@@ -552,8 +561,6 @@ def get_test_split(
             nontest_indices = {d.index for d in nontest_data}
             test_indices = {d.index for d in test_data}
         whole_data = data
-        
-        
 
     for d in whole_data:
         d.output = dict()
@@ -665,203 +672,32 @@ def initial_trainval_split(
     save_data: bool = False,
     save_indices: bool = False,
 ) -> Tuple[MoleculeDataset]:
-    num_data = len(whole_data)
-    num_nontest = len(nontest_data)
-    if active_args.initial_trainval_size is not None:
-        active_args.initial_trainval_fraction = active_args.initial_trainval_size / num_data
 
-
-    if active_args.active_batch_size is None:  # default: 10 steps
-        active_args.active_batch_size = (num_nontest // 10) + 1
-    if (
-        active_args.initial_trainval_fraction is None
-        and active_args.initial_trainval_indices_path is None
-    ):
-        active_args.initial_trainval_fraction = active_args.active_batch_size / num_data
-    if active_args.initial_trainval_size is None:
-        active_args.initial_trainval_size = int(active_args.initial_trainval_fraction * num_data)
-    if active_args.initial_trainval_indices_path is not None:
-        with open(active_args.initial_trainval_indices_path, "rb") as f:
-            trainval_indices = pickle.load(f)
-        active_args.initial_trainval_fraction = len(trainval_indices) / num_data
-        trainval_data = MoleculeDataset([whole_data[i] for i in trainval_indices])
-        remaining_data = MoleculeDataset(
-            [d for d in nontest_data if d.index not in trainval_indices]
+    if active_args.initial_trainval_path is not None:
+        assert (active_args.initial_trainval_features_path is None) == (
+            active_args.features_path is None)
+        assert active_args.initial_trainval_indices_path is None
+        trainval_data = get_data(
+            path=active_args.active_initial_trainval_path,
+            features_path=active_args.initial_trainval_features_path,
+            smiles_columns=active_args.smiles_columns,
+            target_columns=active_args.task_names,
+            features_generator=active_args.features_generator,
         )
-        remaining_indices = {d.index for d in remaining_data}
+        for d in trainval_data:
+            d.output = dict()
+            for s, smiles in enumerate(active_args.smiles_columns):
+                d.output[smiles] = d.smiles[s]
+            for t, target in enumerate(active_args.task_names):
+                d.output[target] = d.targets[t]
+        remaining_data = nontest_data
+        for i, d in enumerate(tqdm(trainval_data)):
+            d.index = i + len(whole_data)
         if save_indices:
-            save_dataset_indices(
-                indices=trainval_indices,
-                save_dir=active_args.active_save_dir,
-                filename_base="initial_trainval",
-            )
-            save_dataset_indices(
-                indices=remaining_indices,
-                save_dir=active_args.active_save_dir,
-                filename_base="initial_remaining",
-            )
-        fraction_trainval = (
-            active_args.initial_trainval_fraction * num_data / num_nontest
-        )
-
-
-    #  define related trainval set
-    if active_args.initial_trainval_type == "morgan_fp":
-        sorted_indices=morgan_fingerprint(nontest_data=nontest_data,active_args=active_args)
-        sorted_trainval_indices=sorted_indices[0:active_args.initial_trainval_size]
-        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        save_dataset_indices(
-            indices=trainval_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="trainval",
-        )  
-    elif active_args.initial_trainval_type == "model_fp":
-        smiles=get_fingerprint_init(nontest_data=nontest_data,active_args=active_args,gpu=active_args.gpu)
-        smiles_=MoleculeDataset.smiles(nontest_data) 
-        new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
-        trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        save_dataset_indices(
-            indices=trainval_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="trainval",
-        )  
-        
-
-    elif active_args.initial_trainval_type == "related_max":
-        target_nontest =MoleculeDataset.targets(nontest_data)
-        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
-        sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
-        test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
-        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
-        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        save_dataset_indices(
-            indices=trainval_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="trainval",
-        )  
-    elif active_args.initial_trainval_type == "related_mean":
-        target_nontest =MoleculeDataset.targets(nontest_data)
-        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
-        sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
-        test_smiles=[item[1] for item in sorted_target[(int(len(smiles_nontest)/2))-int(active_args.initial_trainval_size/2):(int(len(smiles_nontest)/2))+int(active_args.initial_trainval_size/2)]]
-        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
-        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        save_dataset_indices(
-            indices=trainval_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="trainval",
-        )
-    elif active_args.initial_trainval_type == "related_min":
-        target_nontest =MoleculeDataset.targets(nontest_data)
-        smiles_nontest=MoleculeDataset.smiles(nontest_data) 
-        sorted_target=sorted(zip(target_nontest, smiles_nontest))
-        test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
-        sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
-        trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
-        remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
-        save_dataset_indices(
-            indices=trainval_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="trainval",
-        )
-    elif active_args.initial_trainval_type == "related_high":
-            
-        nontest_indices={d.index for d in nontest_data}  
-        if active_args.initial_trainval_seed is  None:    
-                rand=random.randint(0, len(nontest_indices)-active_args.initial_trainval_size)
-        else:
-                rand= active_args.initial_trainval_seed
-        nontest_data_pickle_list=list(nontest_indices)
-        random.shuffle(nontest_data_pickle_list)
-        rand_nontest_data_list=nontest_data_pickle_list[rand:rand+active_args.initial_trainval_size]
-        rand_nontest_data=set(rand_nontest_data_list)
-        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:(0,{len(nontest_data)-active_args.initial_trainval_size})!"
-            
-        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
-        remaining_data = MoleculeDataset(
-                [d for d in nontest_data if d.index not in trainval_data]
-        )
-        save_dataset_indices(
-                indices=trainval_data,
-                save_dir=active_args.active_save_dir,
-                filename_base="trainval",
-        )            
-    elif active_args.initial_trainval_type == "related_low":
-        nontest_indices={d.index for d in nontest_data}  
-        if active_args.initial_trainval_seed is  None:    
-                rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices))
-        else:
-                rand= active_args.initial_trainval_seed
-        nontest_data_pickle_list=list(nontest_indices)
-        random.shuffle(nontest_data_pickle_list)
-        rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand]
-        rand_nontest_data=set(rand_nontest_data_list)
-        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)})!"
-        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
-        remaining_data = MoleculeDataset(
-                [d for d in nontest_data if d.index not in trainval_data]
-        )
-        save_dataset_indices(
-                indices=trainval_data,
-                save_dir=active_args.active_save_dir,
-                filename_base="trainval",
-        )
-    elif active_args.initial_trainval_type == "related_both":
-        nontest_indices={d.index for d in nontest_data}  
-        if active_args.initial_trainval_seed is  None:    
-                rand=random.randint(0+active_args.initial_trainval_size/2, len(nontest_indices)-active_args.initial_trainval_size/2)
-        else:
-                rand= active_args.initial_trainval_seed
-        nontest_data_pickle_list=list(nontest_indices)
-        random.shuffle(nontest_data_pickle_list)
-        rand_nontest_data_list=nontest_data_pickle_list[rand-int(active_args.initial_trainval_size/2):int(rand+active_args.initial_trainval_size/2)]
-        rand_nontest_data=set(rand_nontest_data_list)
-        assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size/2},{len(nontest_data)-int(active_args.initial_trainval_size/2)})!"
-        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
-        remaining_data = MoleculeDataset(
-                [d for d in nontest_data if d.index not in trainval_data]
-        )
-        save_dataset_indices(
-                indices=trainval_data,
-                save_dir=active_args.active_save_dir,
-                filename_base="trainval",
-        )
-    elif active_args.initial_trainval_type == "related_random":
-        nontest_indices={d.index for d in nontest_data}  
-        if active_args.initial_trainval_seed is  None:    
-                rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices)-active_args.initial_trainval_size)
-        else:
-                rand= active_args.initial_trainval_seed
-        nontest_data_pickle_list=list(nontest_indices)
-        random.shuffle(nontest_data_pickle_list)
-        rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand+active_args.initial_trainval_size]
-        assert active_args.initial_trainval_size == len(rand_nontest_data_list), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)-active_args.initial_trainval_size})!"
-        trainval_data_rand=random.sample(rand_nontest_data_list,active_args.initial_trainval_size)
-        rand_nontest_data=set(trainval_data_rand)
-        trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
-        remaining_data = MoleculeDataset(
-                [d for d in nontest_data if d.index not in trainval_data]
-        )
-        save_dataset_indices(
-                indices=trainval_data,
-                save_dir=active_args.active_save_dir,
-                filename_base="trainval",
-        )
-    elif active_args.initial_trainval_type == "random":       
-        fraction_trainval = (
-            active_args.initial_trainval_fraction * num_data / num_nontest
-        )
-        sizes = (fraction_trainval, 1 - fraction_trainval, 0)
-        trainval_data, remaining_data, _ = split_data(
-            data=nontest_data, split_type=active_args.split_type, sizes=sizes,seed=active_args.train_seed,
-        )
-        if save_indices:
-            trainval_indices = {d.index for d in trainval_data}
             remaining_indices = {d.index for d in remaining_data}
+            trainval_indices = {d.index for d in trainval_data}
+            nontest_indices = {d.index for d in remaining_data}
+            nontest_indices.update(trainval_indices)
             save_dataset_indices(
                 indices=trainval_indices,
                 save_dir=active_args.active_save_dir,
@@ -872,34 +708,253 @@ def initial_trainval_split(
                 save_dir=active_args.active_save_dir,
                 filename_base="initial_remaining",
             )
-
-    active_args.train_sizes = list(
-        range(len(trainval_data), num_nontest + 1, active_args.active_batch_size)
-    )
-    if active_args.train_sizes[-1] != num_nontest:
-        active_args.train_sizes.append(num_nontest)
-    if active_args.active_iterations_limit is not None:
-        assert active_args.active_iterations_limit > 1
-        if active_args.active_iterations_limit < len(active_args.train_sizes):
-            active_args.train_sizes = active_args.train_sizes[
-                : active_args.active_iterations_limit
-            ]
-
-    if save_data:
+            save_dataset_indices(
+                indices=nontest_indices,
+                save_dir=active_args.active_save_dir,
+                filename_base="nontest",
+            )
+        whole_data = MoleculeDataset([d for d in whole_data] + [d for d in trainval_data])
         save_dataset(
-            data=trainval_data,
+            data=whole_data,
             save_dir=active_args.active_save_dir,
-            filename_base="initial_trainval",
+            filename_base="whole",
             active_args=active_args,
         )
-        save_dataset(
-            data=remaining_data,
-            save_dir=active_args.active_save_dir,
-            filename_base="initial_remaining",
-            active_args=active_args,
-        )
+    else:
+        num_data = len(whole_data)
+        num_nontest = len(nontest_data)
+        if active_args.initial_trainval_size is not None:
+            active_args.initial_trainval_fraction = active_args.initial_trainval_size / num_data
+        if active_args.active_batch_size is None:  # default: 10 steps
+            active_args.active_batch_size = (num_nontest // 10) + 1
+        if (
+            active_args.initial_trainval_fraction is None
+            and active_args.initial_trainval_indices_path is None
+        ):
+            active_args.initial_trainval_fraction = active_args.active_batch_size / num_data
+        if active_args.initial_trainval_size is None and active_args.initial_trainval_indices_path is None:
+            active_args.initial_trainval_size = int(active_args.initial_trainval_fraction * num_data)
 
-    return trainval_data, remaining_data
+        if active_args.initial_trainval_indices_path is not None:
+            with open(active_args.initial_trainval_indices_path, "rb") as f:
+                trainval_indices = pickle.load(f)
+            active_args.initial_trainval_fraction = len(trainval_indices) / num_data
+            trainval_data = MoleculeDataset([whole_data[i] for i in trainval_indices])
+            remaining_data = MoleculeDataset(
+                [d for d in nontest_data if d.index not in trainval_indices]
+            )
+            remaining_indices = {d.index for d in remaining_data}
+            if save_indices:
+                save_dataset_indices(
+                    indices=trainval_indices,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="initial_trainval",
+                )
+                save_dataset_indices(
+                    indices=remaining_indices,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="initial_remaining",
+                )
+            fraction_trainval = (
+                active_args.initial_trainval_fraction * num_data / num_nontest
+            )
+
+
+        #  define related trainval set
+        elif active_args.initial_trainval_type == "morgan_fp":
+            sorted_indices=morgan_fingerprint(nontest_data=nontest_data,active_args=active_args)
+            sorted_trainval_indices=sorted_indices[0:active_args.initial_trainval_size]
+            trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+            remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+            save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+            )  
+        elif active_args.initial_trainval_type == "model_fp":
+            smiles=get_fingerprint_init(nontest_data=nontest_data,active_args=active_args,gpu=active_args.gpu)
+            smiles_=MoleculeDataset.smiles(nontest_data) 
+            new_indices=[smiles_.index(smiles[i]) for i in range(len(smiles))] 
+            trainval_data = MoleculeDataset([nontest_data[i] for i in new_indices])
+            remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+            save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+            )  
+            
+
+        elif active_args.initial_trainval_type == "related_max":
+            target_nontest =MoleculeDataset.targets(nontest_data)
+            smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+            sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
+            test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
+            sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
+            trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+            remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+            save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+            )  
+        elif active_args.initial_trainval_type == "related_mean":
+            target_nontest =MoleculeDataset.targets(nontest_data)
+            smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+            sorted_target=sorted(zip(target_nontest, smiles_nontest),reverse=True,)
+            test_smiles=[item[1] for item in sorted_target[(int(len(smiles_nontest)/2))-int(active_args.initial_trainval_size/2):(int(len(smiles_nontest)/2))+int(active_args.initial_trainval_size/2)]]
+            sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
+            trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+            remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+            save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+            )
+        elif active_args.initial_trainval_type == "related_min":
+            target_nontest =MoleculeDataset.targets(nontest_data)
+            smiles_nontest=MoleculeDataset.smiles(nontest_data) 
+            sorted_target=sorted(zip(target_nontest, smiles_nontest))
+            test_smiles=[item[1] for item in sorted_target[0:active_args.initial_trainval_size]]
+            sorted_trainval_indices=[smiles_nontest.index(test_smiles[i]) for i in range(len(test_smiles))]
+            trainval_data = MoleculeDataset([nontest_data[i] for i in sorted_trainval_indices])
+            remaining_data = MoleculeDataset([d for d in nontest_data if d.index not in trainval_data])
+            save_dataset_indices(
+                indices=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="trainval",
+            )
+        elif active_args.initial_trainval_type == "related_high":
+                
+            nontest_indices={d.index for d in nontest_data}  
+            if active_args.initial_trainval_seed is  None:    
+                    rand=random.randint(0, len(nontest_indices)-active_args.initial_trainval_size)
+            else:
+                    rand= active_args.initial_trainval_seed
+            nontest_data_pickle_list=list(nontest_indices)
+            random.shuffle(nontest_data_pickle_list)
+            rand_nontest_data_list=nontest_data_pickle_list[rand:rand+active_args.initial_trainval_size]
+            rand_nontest_data=set(rand_nontest_data_list)
+            assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:(0,{len(nontest_data)-active_args.initial_trainval_size})!"
+                
+            trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+            remaining_data = MoleculeDataset(
+                    [d for d in nontest_data if d.index not in trainval_data]
+            )
+            save_dataset_indices(
+                    indices=trainval_data,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="trainval",
+            )            
+        elif active_args.initial_trainval_type == "related_low":
+            nontest_indices={d.index for d in nontest_data}  
+            if active_args.initial_trainval_seed is  None:    
+                    rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices))
+            else:
+                    rand= active_args.initial_trainval_seed
+            nontest_data_pickle_list=list(nontest_indices)
+            random.shuffle(nontest_data_pickle_list)
+            rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand]
+            rand_nontest_data=set(rand_nontest_data_list)
+            assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)})!"
+            trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+            remaining_data = MoleculeDataset(
+                    [d for d in nontest_data if d.index not in trainval_data]
+            )
+            save_dataset_indices(
+                    indices=trainval_data,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="trainval",
+            )
+        elif active_args.initial_trainval_type == "related_both":
+            nontest_indices={d.index for d in nontest_data}  
+            if active_args.initial_trainval_seed is  None:    
+                    rand=random.randint(0+active_args.initial_trainval_size/2, len(nontest_indices)-active_args.initial_trainval_size/2)
+            else:
+                    rand= active_args.initial_trainval_seed
+            nontest_data_pickle_list=list(nontest_indices)
+            random.shuffle(nontest_data_pickle_list)
+            rand_nontest_data_list=nontest_data_pickle_list[rand-int(active_args.initial_trainval_size/2):int(rand+active_args.initial_trainval_size/2)]
+            rand_nontest_data=set(rand_nontest_data_list)
+            assert active_args.initial_trainval_size == len(rand_nontest_data), f"seed can be in this range:({active_args.initial_trainval_size/2},{len(nontest_data)-int(active_args.initial_trainval_size/2)})!"
+            trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+            remaining_data = MoleculeDataset(
+                    [d for d in nontest_data if d.index not in trainval_data]
+            )
+            save_dataset_indices(
+                    indices=trainval_data,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="trainval",
+            )
+        elif active_args.initial_trainval_type == "related_random":
+            nontest_indices={d.index for d in nontest_data}  
+            if active_args.initial_trainval_seed is  None:    
+                    rand=random.randint(0+active_args.initial_trainval_size, len(nontest_indices)-active_args.initial_trainval_size)
+            else:
+                    rand= active_args.initial_trainval_seed
+            nontest_data_pickle_list=list(nontest_indices)
+            random.shuffle(nontest_data_pickle_list)
+            rand_nontest_data_list=nontest_data_pickle_list[rand-active_args.initial_trainval_size:rand+active_args.initial_trainval_size]
+            assert active_args.initial_trainval_size == len(rand_nontest_data_list), f"seed can be in this range:({active_args.initial_trainval_size},{len(nontest_data)-active_args.initial_trainval_size})!"
+            trainval_data_rand=random.sample(rand_nontest_data_list,active_args.initial_trainval_size)
+            rand_nontest_data=set(trainval_data_rand)
+            trainval_data = MoleculeDataset([whole_data[i] for i in rand_nontest_data])
+            remaining_data = MoleculeDataset(
+                    [d for d in nontest_data if d.index not in trainval_data]
+            )
+            save_dataset_indices(
+                    indices=trainval_data,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="trainval",
+            )
+        elif active_args.initial_trainval_type == "random":       
+            fraction_trainval = (
+                active_args.initial_trainval_fraction * num_data / num_nontest
+            )
+            sizes = (fraction_trainval, 1 - fraction_trainval, 0)
+            trainval_data, remaining_data, _ = split_data(
+                data=nontest_data, split_type=active_args.split_type, sizes=sizes,seed=active_args.train_seed,
+            )
+            if save_indices:
+                trainval_indices = {d.index for d in trainval_data}
+                remaining_indices = {d.index for d in remaining_data}
+                save_dataset_indices(
+                    indices=trainval_indices,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="initial_trainval",
+                )
+                save_dataset_indices(
+                    indices=remaining_indices,
+                    save_dir=active_args.active_save_dir,
+                    filename_base="initial_remaining",
+                )
+
+        active_args.train_sizes = list(
+            range(len(trainval_data), num_nontest + 1, active_args.active_batch_size)
+        )
+        if active_args.train_sizes[-1] != num_nontest:
+            active_args.train_sizes.append(num_nontest)
+        if active_args.active_iterations_limit is not None:
+            assert active_args.active_iterations_limit > 1
+            if active_args.active_iterations_limit < len(active_args.train_sizes):
+                active_args.train_sizes = active_args.train_sizes[
+                    : active_args.active_iterations_limit
+                ]
+
+        if save_data:
+            save_dataset(
+                data=trainval_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="initial_trainval",
+                active_args=active_args,
+            )
+            save_dataset(
+                data=remaining_data,
+                save_dir=active_args.active_save_dir,
+                filename_base="initial_remaining",
+                active_args=active_args,
+            )
+
+    return whole_data, trainval_data, remaining_data
 
 #@profile
 def get_feature_names(active_args: ActiveArgs) -> List[str]:
